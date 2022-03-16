@@ -1,52 +1,112 @@
 import tkinter as tk
 import tkinter.font as tkFont
-
+from tkinter import filedialog as fd
 
 
 class Login:
     def __init__(self, root):
-        self.root = root
         self.logged = False
-        # setting title
-        root.title("Login")
-        # setting height and width of screen
-        root.geometry("300x250")
-        # declaring variable
-        self.username = tk.StringVar()
         self.password = tk.StringVar()
         self.message = tk.StringVar()
-        self.success = False
-        # Creating layout of login form
-        tk.Label(root, width="300", text="Please enter details below", bg="orange", fg="white").pack()
-        # Username Label
-        tk.Label(root, text="Username * ").place(x=20, y=40)
-        # Username textbox
-        tk.Entry(root, textvariable=self.username).place(x=90, y=42)
-        # Password Label
-        tk.Label(root, text="Password * ").place(x=20, y=80)
-        # Password textbox
-        tk.Entry(root, textvariable=self.password, show="*").place(x=90, y=82)
-        # Label for displaying login status[success/failed]
-        tk.Label(root, text="", textvariable=self.message).place(x=95, y=100)
-        # Login button
-        tk.Button(root, text="Login", width=10, height=1, bg="orange", command=self.login).place(x=105, y=130)
+        self.filename = tk.StringVar()
+        self.root = root
+        #setting title
+        root.title("Login")
+        #setting window size
+        width=361
+        height=193
+        screenwidth = root.winfo_screenwidth()
+        screenheight = root.winfo_screenheight()
+        alignstr = '%dx%d+%d+%d' % (width, height, (screenwidth - width) / 2, (screenheight - height) / 2)
+        root.geometry(alignstr)
+        root.resizable(width=False, height=False)
+
+        GMessage_945=tk.Message(root)
+        ft = tkFont.Font(family='Times',size=10)
+        GMessage_945["font"] = ft
+        GMessage_945["fg"] = "#333333"
+        GMessage_945["justify"] = "center"
+        GMessage_945["text"] = "login"
+        GMessage_945.place(x=130,y=10,width=100,height=30)
+
+        GButton_156=tk.Button(root)
+        GButton_156["bg"] = "#efefef"
+        ft = tkFont.Font(family='Times',size=10)
+        GButton_156["font"] = ft
+        GButton_156["fg"] = "#000000"
+        GButton_156["justify"] = "center"
+        GButton_156["text"] = "Vybrat soubor"
+        GButton_156.place(x=70,y=50,width=100,height=30)
+        GButton_156["command"] = self.GButton_156_command
+
+        GButton_905=tk.Button(root)
+        GButton_905["bg"] = "#efefef"
+        ft = tkFont.Font(family='Times',size=10)
+        GButton_905["font"] = ft
+        GButton_905["fg"] = "#000000"
+        GButton_905["justify"] = "center"
+        GButton_905["text"] = "Přihlásit"
+        GButton_905.place(x=70,y=100,width=100,height=30)
+        GButton_905["command"] = self.GButton_905_command
+
+        GLabel_347=tk.Label(root)
+        ft = tkFont.Font(family='Times',size=10)
+        GLabel_347["font"] = ft
+        GLabel_347["fg"] = "#333333"
+        GLabel_347["justify"] = "center"
+        # GLabel_347["text"] = "žádný"
+        self.filename.set("žádný")
+        GLabel_347["textvariable"] = self.filename
+        GLabel_347.place(x=190,y=50,width=70,height=25)
+
+        GLineEdit_991=tk.Entry(root)
+        GLineEdit_991["borderwidth"] = "1px"
+        ft = tkFont.Font(family='Times',size=10)
+        GLineEdit_991["font"] = ft
+        GLineEdit_991["fg"] = "#333333"
+        GLineEdit_991["justify"] = "center"
+        # GLineEdit_991["text"] = "Heslo"
+        #self.password.set("")
+        GLineEdit_991["textvariable"] = self.password
+        GLineEdit_991.place(x=200,y=100,width=100,height=30)
+
+        GLabel_717=tk.Label(root)
+        ft = tkFont.Font(family='Times',size=10)
+        GLabel_717["font"] = ft
+        GLabel_717["fg"] = "#333333"
+        GLabel_717["justify"] = "center"
+        GLabel_717["text"] = ""
+        GLabel_717["textvariable"] = self.message
+        GLabel_717.place(x=70,y=140,width=230,height=30)
+
+    def GButton_156_command(self):
+        print("command")
+        filename = fd.askopenfilename()
+        self.filename.set(filename)
+
+
+    def GButton_905_command(self):
+        print("prihlaseni")
+        self.login()
 
     # defining login function
     def login(self):
         # getting form data
-        uname = self.username.get()
         pwd = self.password.get()
+        print(pwd)
         # applying empty validation
-        if uname == '' or pwd == '':
+        if pwd == '':
+            print("Prazdne heslo")
             self.message.set("fill the empty field!!!")
         else:
-            if uname == "admin" and pwd == "123":
+            if pwd == "123":
                 self.message.set("Login success")
+                print("Login success")
                 self.logged = True
                 self.root.destroy()
             else:
-                self.message.set("Wrong username or password!!!")
-
+                self.message.set("Wrong username or password")
+                print("Wrong username or password")
 
 class App:
     def __init__(self, root):
