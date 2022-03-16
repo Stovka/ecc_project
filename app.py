@@ -2,12 +2,17 @@ import tkinter as tk
 import tkinter.font as tkFont
 from tkinter import filedialog as fd
 
+import os
+import logging
+
+PASSWORD = "123"
 
 class Login:
     def __init__(self, root):
         self.logged = False
         self.password = tk.StringVar()
         self.message = tk.StringVar()
+        self.filepath = ""
         self.filename = tk.StringVar()
         self.root = root
         #setting title
@@ -21,92 +26,90 @@ class Login:
         root.geometry(alignstr)
         root.resizable(width=False, height=False)
 
-        GMessage_945=tk.Message(root)
+        M_nadpis=tk.Message(root)
         ft = tkFont.Font(family='Times',size=10)
-        GMessage_945["font"] = ft
-        GMessage_945["fg"] = "#333333"
-        GMessage_945["justify"] = "center"
-        GMessage_945["text"] = "login"
-        GMessage_945.place(x=130,y=10,width=100,height=30)
+        M_nadpis["font"] = ft
+        M_nadpis["fg"] = "#333333"
+        M_nadpis["justify"] = "center"
+        M_nadpis["text"] = "login"
+        M_nadpis.place(x=130,y=10,width=100,height=30)
 
-        GButton_156=tk.Button(root)
-        GButton_156["bg"] = "#efefef"
+        B_vybrat_soubor=tk.Button(root)
+        B_vybrat_soubor["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_156["font"] = ft
-        GButton_156["fg"] = "#000000"
-        GButton_156["justify"] = "center"
-        GButton_156["text"] = "Vybrat soubor"
-        GButton_156.place(x=70,y=50,width=100,height=30)
-        GButton_156["command"] = self.GButton_156_command
+        B_vybrat_soubor["font"] = ft
+        B_vybrat_soubor["fg"] = "#000000"
+        B_vybrat_soubor["justify"] = "center"
+        B_vybrat_soubor["text"] = "Vybrat soubor"
+        B_vybrat_soubor.place(x=70,y=50,width=100,height=30)
+        B_vybrat_soubor["command"] = self.GButton_156_command
 
-        GButton_905=tk.Button(root)
-        GButton_905["bg"] = "#efefef"
+        B_prihlasit=tk.Button(root)
+        B_prihlasit["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_905["font"] = ft
-        GButton_905["fg"] = "#000000"
-        GButton_905["justify"] = "center"
-        GButton_905["text"] = "Přihlásit"
-        GButton_905.place(x=70,y=100,width=100,height=30)
-        GButton_905["command"] = self.GButton_905_command
+        B_prihlasit["font"] = ft
+        B_prihlasit["fg"] = "#000000"
+        B_prihlasit["justify"] = "center"
+        B_prihlasit["text"] = "Přihlásit"
+        B_prihlasit.place(x=70,y=100,width=100,height=30)
+        B_prihlasit["command"] = self.GButton_905_command
 
-        GLabel_347=tk.Label(root)
+        L_vybrany_soubor=tk.Label(root)
         ft = tkFont.Font(family='Times',size=10)
-        GLabel_347["font"] = ft
-        GLabel_347["fg"] = "#333333"
-        GLabel_347["justify"] = "center"
-        # GLabel_347["text"] = "žádný"
+        L_vybrany_soubor["font"] = ft
+        L_vybrany_soubor["fg"] = "#333333"
+        L_vybrany_soubor["justify"] = "center"
+        # L_vybrany_soubor["text"] = "žádný"
         self.filename.set("žádný")
-        GLabel_347["textvariable"] = self.filename
-        GLabel_347.place(x=190,y=50,width=70,height=25)
+        L_vybrany_soubor["textvariable"] = self.filename
+        L_vybrany_soubor.place(x=190,y=50,width=70,height=25)
 
-        GLineEdit_991=tk.Entry(root)
-        GLineEdit_991["borderwidth"] = "1px"
+        E_heslo=tk.Entry(root)
+        E_heslo["borderwidth"] = "1px"
         ft = tkFont.Font(family='Times',size=10)
-        GLineEdit_991["font"] = ft
-        GLineEdit_991["fg"] = "#333333"
-        GLineEdit_991["justify"] = "center"
-        # GLineEdit_991["text"] = "Heslo"
+        E_heslo["font"] = ft
+        E_heslo["fg"] = "#333333"
+        E_heslo["justify"] = "center"
+        # E_heslo["text"] = "Heslo"
         #self.password.set("")
-        GLineEdit_991["textvariable"] = self.password
-        GLineEdit_991.place(x=200,y=100,width=100,height=30)
+        E_heslo["textvariable"] = self.password
+        E_heslo.place(x=200,y=100,width=100,height=30)
 
-        GLabel_717=tk.Label(root)
+        L_message=tk.Label(root)
         ft = tkFont.Font(family='Times',size=10)
-        GLabel_717["font"] = ft
-        GLabel_717["fg"] = "#333333"
-        GLabel_717["justify"] = "center"
-        GLabel_717["text"] = ""
-        GLabel_717["textvariable"] = self.message
-        GLabel_717.place(x=70,y=140,width=230,height=30)
+        L_message["font"] = ft
+        L_message["fg"] = "#333333"
+        L_message["justify"] = "center"
+        L_message["text"] = ""
+        L_message["textvariable"] = self.message
+        L_message.place(x=70,y=140,width=230,height=30)
 
     def GButton_156_command(self):
-        print("command")
-        filename = fd.askopenfilename()
-        self.filename.set(filename)
+        self.filepath = fd.askopenfilename()
+        logger.info(f"Chosen login file: {self.filepath}")
+        self.filename.set(os.path.basename(self.filepath))
 
 
     def GButton_905_command(self):
-        print("prihlaseni")
         self.login()
 
     # defining login function
     def login(self):
         # getting form data
         pwd = self.password.get()
-        print(pwd)
         # applying empty validation
         if pwd == '':
-            print("Prazdne heslo")
+            logger.info("Empty password entered")
             self.message.set("fill the empty field!!!")
         else:
-            if pwd == "123":
+            if pwd == PASSWORD:
+                logger.info("Successful login.")
                 self.message.set("Login success")
-                print("Login success")
                 self.logged = True
                 self.root.destroy()
             else:
+                logger.info("Wrong username or password entered.")
                 self.message.set("Wrong username or password")
-                print("Wrong username or password")
 
 class App:
     def __init__(self, root):
@@ -121,85 +124,85 @@ class App:
         root.geometry(alignstr)
         root.resizable(width=False, height=False)
 
-        GButton_951=tk.Button(root)
-        GButton_951["bg"] = "#efefef"
+        B_vybrat_soubor=tk.Button(root)
+        B_vybrat_soubor["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_951["font"] = ft
-        GButton_951["fg"] = "#000000"
-        GButton_951["justify"] = "center"
-        GButton_951["text"] = "Vybrat soubor"
-        GButton_951.place(x=20,y=50,width=100,height=30)
-        GButton_951["command"] = self.GButton_951_command
+        B_vybrat_soubor["font"] = ft
+        B_vybrat_soubor["fg"] = "#000000"
+        B_vybrat_soubor["justify"] = "center"
+        B_vybrat_soubor["text"] = "Vybrat soubor"
+        B_vybrat_soubor.place(x=20,y=50,width=100,height=30)
+        B_vybrat_soubor["command"] = self.GButton_951_command
 
-        GButton_277=tk.Button(root)
-        GButton_277["bg"] = "#efefef"
+        B_vybrat_uzivatele=tk.Button(root)
+        B_vybrat_uzivatele["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_277["font"] = ft
-        GButton_277["fg"] = "#000000"
-        GButton_277["justify"] = "center"
-        GButton_277["text"] = "Vybrat uživatele"
-        GButton_277.place(x=20,y=100,width=100,height=30)
-        GButton_277["command"] = self.GButton_277_command
+        B_vybrat_uzivatele["font"] = ft
+        B_vybrat_uzivatele["fg"] = "#000000"
+        B_vybrat_uzivatele["justify"] = "center"
+        B_vybrat_uzivatele["text"] = "Vybrat uživatele"
+        B_vybrat_uzivatele.place(x=20,y=100,width=100,height=30)
+        B_vybrat_uzivatele["command"] = self.GButton_277_command
 
-        GButton_774=tk.Button(root)
-        GButton_774["bg"] = "#efefef"
+        B_vyjednat_klic=tk.Button(root)
+        B_vyjednat_klic["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_774["font"] = ft
-        GButton_774["fg"] = "#000000"
-        GButton_774["justify"] = "center"
-        GButton_774["text"] = "Vyjednat klíč"
-        GButton_774.place(x=20,y=200,width=100,height=30)
-        GButton_774["command"] = self.GButton_774_command
+        B_vyjednat_klic["font"] = ft
+        B_vyjednat_klic["fg"] = "#000000"
+        B_vyjednat_klic["justify"] = "center"
+        B_vyjednat_klic["text"] = "Vyjednat klíč"
+        B_vyjednat_klic.place(x=20,y=200,width=100,height=30)
+        B_vyjednat_klic["command"] = self.GButton_774_command
 
-        GButton_278=tk.Button(root)
-        GButton_278["bg"] = "#efefef"
+        B_podepsat_soubor=tk.Button(root)
+        B_podepsat_soubor["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_278["font"] = ft
-        GButton_278["fg"] = "#000000"
-        GButton_278["justify"] = "center"
-        GButton_278["text"] = "Podepsat soubor"
-        GButton_278.place(x=20,y=250,width=100,height=30)
-        GButton_278["command"] = self.GButton_278_command
+        B_podepsat_soubor["font"] = ft
+        B_podepsat_soubor["fg"] = "#000000"
+        B_podepsat_soubor["justify"] = "center"
+        B_podepsat_soubor["text"] = "Podepsat soubor"
+        B_podepsat_soubor.place(x=20,y=250,width=100,height=30)
+        B_podepsat_soubor["command"] = self.GButton_278_command
 
-        GButton_99=tk.Button(root)
-        GButton_99["bg"] = "#efefef"
+        B_overit_podpis=tk.Button(root)
+        B_overit_podpis["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_99["font"] = ft
-        GButton_99["fg"] = "#000000"
-        GButton_99["justify"] = "center"
-        GButton_99["text"] = "Ověřit podpis"
-        GButton_99.place(x=140,y=250,width=100,height=30)
-        GButton_99["command"] = self.GButton_99_command
+        B_overit_podpis["font"] = ft
+        B_overit_podpis["fg"] = "#000000"
+        B_overit_podpis["justify"] = "center"
+        B_overit_podpis["text"] = "Ověřit podpis"
+        B_overit_podpis.place(x=140,y=250,width=100,height=30)
+        B_overit_podpis["command"] = self.GButton_99_command
 
-        GButton_454=tk.Button(root)
-        GButton_454["bg"] = "#efefef"
+        B_odeslat_soubor=tk.Button(root)
+        B_odeslat_soubor["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_454["font"] = ft
-        GButton_454["fg"] = "#000000"
-        GButton_454["justify"] = "center"
-        GButton_454["text"] = "Odeslat soubor"
-        GButton_454.place(x=20,y=350,width=100,height=30)
-        GButton_454["command"] = self.GButton_454_command
+        B_odeslat_soubor["font"] = ft
+        B_odeslat_soubor["fg"] = "#000000"
+        B_odeslat_soubor["justify"] = "center"
+        B_odeslat_soubor["text"] = "Odeslat soubor"
+        B_odeslat_soubor.place(x=20,y=350,width=100,height=30)
+        B_odeslat_soubor["command"] = self.GButton_454_command
 
-        GButton_280=tk.Button(root)
-        GButton_280["bg"] = "#efefef"
+        B_zobrazit_zpravy=tk.Button(root)
+        B_zobrazit_zpravy["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_280["font"] = ft
-        GButton_280["fg"] = "#000000"
-        GButton_280["justify"] = "center"
-        GButton_280["text"] = "Zobrazit zprávy"
-        GButton_280.place(x=140,y=350,width=100,height=30)
-        GButton_280["command"] = self.GButton_280_command
+        B_zobrazit_zpravy["font"] = ft
+        B_zobrazit_zpravy["fg"] = "#000000"
+        B_zobrazit_zpravy["justify"] = "center"
+        B_zobrazit_zpravy["text"] = "Zobrazit zprávy"
+        B_zobrazit_zpravy.place(x=140,y=350,width=100,height=30)
+        B_zobrazit_zpravy["command"] = self.GButton_280_command
 
-        GButton_29=tk.Button(root)
-        GButton_29["bg"] = "#efefef"
+        B_otevrit_adresar=tk.Button(root)
+        B_otevrit_adresar["bg"] = "#efefef"
         ft = tkFont.Font(family='Times',size=10)
-        GButton_29["font"] = ft
-        GButton_29["fg"] = "#000000"
-        GButton_29["justify"] = "center"
-        GButton_29["text"] = "Otevřít adresář"
-        GButton_29.place(x=400,y=50,width=100,height=30)
-        GButton_29["command"] = self.GButton_29_command
+        B_otevrit_adresar["font"] = ft
+        B_otevrit_adresar["fg"] = "#000000"
+        B_otevrit_adresar["justify"] = "center"
+        B_otevrit_adresar["text"] = "Otevřít adresář"
+        B_otevrit_adresar.place(x=400,y=50,width=100,height=30)
+        B_otevrit_adresar["command"] = self.GButton_29_command
 
     def GButton_951_command(self):
         print("command")
@@ -233,6 +236,11 @@ class App:
         print("command")
 
 if __name__ == "__main__":
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger('logger')
+
+    logger.info("Starting login form")
     # calling function Loginform
     root1 = tk.Tk()
     login = Login(root1)
