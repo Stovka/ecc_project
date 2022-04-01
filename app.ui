@@ -77,7 +77,7 @@
       </object>
     </child>
     <child>
-      <object class="ttk.Button" id="choose">
+      <object class="ttk.Button" id="choose_login_file">
         <property name="command" type="command" cbtype="simple">open</property>
         <property name="text" translatable="yes">^</property>
         <layout manager="place">
@@ -87,6 +87,293 @@
           <property name="x">200</property>
           <property name="y">60</property>
         </layout>
+      </object>
+    </child>
+  </object>
+  <object class="ttk.Frame" id="main_window">
+    <property name="height">450</property>
+    <property name="width">390</property>
+    <layout manager="pack">
+      <property name="expand">true</property>
+      <property name="fill">both</property>
+      <property name="side">top</property>
+    </layout>
+    <child>
+      <object class="ttk.Frame" id="frame_main">
+        <property name="height">310</property>
+        <property name="width">400</property>
+        <layout manager="pack">
+          <property name="side">top</property>
+        </layout>
+        <child>
+          <object class="ttk.Label" id="label_input_file">
+            <property name="cursor">arrow</property>
+            <property name="font">{Arial} 12 {}</property>
+            <property name="justify">center</property>
+            <property name="text" translatable="yes">Input file</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="x">25</property>
+              <property name="y">60</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_start_ecdh">
+            <property name="command" type="command" cbtype="simple">b_start_ecdh</property>
+            <property name="text" translatable="yes">Negotiate keys</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">165</property>
+              <property name="x">25</property>
+              <property name="y">170</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Entry" id="chosen_input_file">
+            <property name="state">readonly</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">90</property>
+              <property name="x">100</property>
+              <property name="y">60</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_choose_input_file">
+            <property name="command" type="command" cbtype="simple">b_open</property>
+            <property name="text" translatable="yes">^</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">20</property>
+              <property name="x">200</property>
+              <property name="y">60</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Label" id="chosen_user">
+            <property name="cursor">arrow</property>
+            <property name="font">{Arial} 12 {}</property>
+            <property name="justify">center</property>
+            <property name="text" translatable="yes">User</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="x">25</property>
+              <property name="y">120</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Entry" id="bchosen_user2">
+            <property name="state">readonly</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">90</property>
+              <property name="x">100</property>
+              <property name="y">120</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_chosen_user">
+            <property name="command" type="command" cbtype="simple">b_choose_user</property>
+            <property name="text" translatable="yes">^</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">20</property>
+              <property name="x">200</property>
+              <property name="y">120</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_start_sign">
+            <property name="command" type="command" cbtype="simple">b_start_sign</property>
+            <property name="text" translatable="yes">Sign file</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">165</property>
+              <property name="x">25</property>
+              <property name="y">200</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_start_verify">
+            <property name="command" type="command" cbtype="simple">b_start_verify</property>
+            <property name="text" translatable="yes">Verify signature</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">165</property>
+              <property name="x">25</property>
+              <property name="y">230</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="choose_signature">
+            <property name="command" type="command" cbtype="simple">b_choose_signature</property>
+            <property name="text" translatable="yes">^</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">20</property>
+              <property name="x">200</property>
+              <property name="y">90</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_start_send">
+            <property name="command" type="command" cbtype="simple">b_start_send</property>
+            <property name="text" translatable="yes">Send file</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">165</property>
+              <property name="x">25</property>
+              <property name="y">280</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_start_mailbox">
+            <property name="command" type="command" cbtype="simple">b_start_mailbox</property>
+            <property name="text" translatable="yes">Open mailbox</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="width">165</property>
+              <property name="x">200</property>
+              <property name="y">280</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_edit_user">
+            <property name="command" type="command" cbtype="simple">b_edit_user</property>
+            <property name="text" translatable="yes">Edit</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">30</property>
+              <property name="x">230</property>
+              <property name="y">120</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Label" id="label_signature">
+            <property name="cursor">arrow</property>
+            <property name="font">{Arial} 12 {}</property>
+            <property name="justify">center</property>
+            <property name="text" translatable="yes">Signature</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="x">25</property>
+              <property name="y">90</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Entry" id="chosen_signature">
+            <property name="state">readonly</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">90</property>
+              <property name="x">100</property>
+              <property name="y">90</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_console">
+            <property name="command" type="command" cbtype="simple">b_console</property>
+            <property name="text" translatable="yes">Console</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">160</property>
+              <property name="x">200</property>
+              <property name="y">230</property>
+            </layout>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Frame" id="frame_mailbox">
+        <property name="height">200</property>
+        <property name="width">400</property>
+        <layout manager="pack">
+          <property name="expand">true</property>
+          <property name="fill">both</property>
+          <property name="side">top</property>
+        </layout>
+        <child>
+          <object class="pygubu.builder.widgets.scrollbarhelper" id="mailbox_frame">
+            <property name="scrolltype">both</property>
+            <property name="usemousewheel">false</property>
+            <layout manager="pack">
+              <property name="expand">true</property>
+              <property name="fill">both</property>
+              <property name="side">top</property>
+            </layout>
+            <child>
+              <object class="tk.Text" id="mailbox_entry">
+                <property name="height">10</property>
+                <property name="width">50</property>
+                <layout manager="pack">
+                  <property name="expand">true</property>
+                  <property name="fill">both</property>
+                  <property name="side">top</property>
+                </layout>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="ttk.Frame" id="log_window">
+    <property name="height">140</property>
+    <property name="width">390</property>
+    <layout manager="pack">
+      <property name="expand">true</property>
+      <property name="fill">both</property>
+      <property name="side">top</property>
+    </layout>
+    <child>
+      <object class="pygubu.builder.widgets.scrollbarhelper" id="log_frame">
+        <property name="scrolltype">both</property>
+        <property name="usemousewheel">false</property>
+        <layout manager="pack">
+          <property name="expand">true</property>
+          <property name="fill">both</property>
+          <property name="side">top</property>
+        </layout>
+        <child>
+          <object class="tk.Text" id="log_entry">
+            <property name="height">10</property>
+            <property name="width">50</property>
+            <layout manager="pack">
+              <property name="side">top</property>
+            </layout>
+          </object>
+        </child>
       </object>
     </child>
   </object>
