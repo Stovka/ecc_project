@@ -1,0 +1,9 @@
+{
+  "public_key": {
+    "x": "123ABC",
+    "y": "123DEF"
+  },
+  "nonce": "nonce",
+  "mac": "mac",
+  "database": "encrypted database"
+}

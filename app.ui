@@ -158,8 +158,7 @@
           </object>
         </child>
         <child>
-          <object class="ttk.Label" id="chosen_user">
-            <property name="cursor">arrow</property>
+          <object class="ttk.Label" id="label_chosen_user">
             <property name="font">{Arial} 12 {}</property>
             <property name="justify">center</property>
             <property name="text" translatable="yes">User</property>
@@ -167,31 +166,6 @@
               <property name="anchor">nw</property>
               <property name="height">25</property>
               <property name="x">25</property>
-              <property name="y">120</property>
-            </layout>
-          </object>
-        </child>
-        <child>
-          <object class="ttk.Entry" id="bchosen_user2">
-            <property name="state">readonly</property>
-            <layout manager="place">
-              <property name="anchor">nw</property>
-              <property name="height">25</property>
-              <property name="width">90</property>
-              <property name="x">100</property>
-              <property name="y">120</property>
-            </layout>
-          </object>
-        </child>
-        <child>
-          <object class="ttk.Button" id="b_chosen_user">
-            <property name="command" type="command" cbtype="simple">b_choose_user</property>
-            <property name="text" translatable="yes">^</property>
-            <layout manager="place">
-              <property name="anchor">nw</property>
-              <property name="height">25</property>
-              <property name="width">20</property>
-              <property name="x">200</property>
               <property name="y">120</property>
             </layout>
           </object>
@@ -268,7 +242,7 @@
               <property name="anchor">nw</property>
               <property name="height">25</property>
               <property name="width">30</property>
-              <property name="x">230</property>
+              <property name="x">200</property>
               <property name="y">120</property>
             </layout>
           </object>
@@ -309,6 +283,18 @@
               <property name="width">160</property>
               <property name="x">200</property>
               <property name="y">230</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Combobox" id="chosen_user">
+            <bind sequence="&lt;Button-1&gt;" handler="chosen_user_clicked" add="" />
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">90</property>
+              <property name="x">100</property>
+              <property name="y">120</property>
             </layout>
           </object>
         </child>
@@ -374,6 +360,215 @@
             </layout>
           </object>
         </child>
+      </object>
+    </child>
+  </object>
+  <object class="ttk.Frame" id="edit_frame">
+    <property name="height">400</property>
+    <property name="width">300</property>
+    <layout manager="pack">
+      <property name="side">top</property>
+    </layout>
+    <child>
+      <object class="ttk.Label" id="l_name">
+        <property name="anchor">n</property>
+        <property name="cursor">arrow</property>
+        <property name="font">{Arial} 12 {}</property>
+        <property name="justify">center</property>
+        <property name="text" translatable="yes">Name</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">50</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_surname">
+        <property name="font">{Arial} 12 {}</property>
+        <property name="text" translatable="yes">Surname</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">80</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_name">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">50</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_surname">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">80</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_ip">
+        <property name="font">{Arial} 12 {}</property>
+        <property name="text" translatable="yes">IP</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">110</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_ip">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">110</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_pk">
+        <property name="font">{Arial} 12 {}</property>
+        <property name="text" translatable="yes">Public key</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">140</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_pk">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">140</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_sk">
+        <property name="font">{Arial} 12 {}</property>
+        <property name="text" translatable="yes">Private key</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">170</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_sk">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">170</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_note">
+        <property name="font">{Arial} 12 {}</property>
+        <property name="text" translatable="yes">Note</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">200</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="pygubu.builder.widgets.scrollbarhelper" id="note_frame">
+        <property name="scrolltype">both</property>
+        <property name="usemousewheel">false</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="height">150</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">200</property>
+        </layout>
+        <child>
+          <object class="tk.Text" id="e_note">
+            <property name="height">10</property>
+            <property name="insertunfocussed">none</property>
+            <property name="width">50</property>
+            <layout manager="pack">
+              <property name="side">top</property>
+            </layout>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Button" id="b_save">
+        <property name="command" type="command" cbtype="simple">b_save</property>
+        <property name="text" translatable="yes">Save</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">50</property>
+          <property name="x">110</property>
+          <property name="y">360</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Label" id="l_username">
+        <property name="anchor">n</property>
+        <property name="cursor">arrow</property>
+        <property name="font">{Arial} 12 {}</property>
+        <property name="justify">center</property>
+        <property name="text" translatable="yes">Username</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="x">25</property>
+          <property name="y">20</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Entry" id="e_username">
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">170</property>
+          <property name="x">110</property>
+          <property name="y">20</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Button" id="b_add_user">
+        <property name="command" type="command" cbtype="simple">b_add_user</property>
+        <property name="text" translatable="yes">Add</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">50</property>
+          <property name="x">170</property>
+          <property name="y">360</property>
+        </layout>
+      </object>
+    </child>
+    <child>
+      <object class="ttk.Button" id="b_delete_user">
+        <property name="command" type="command" cbtype="simple">b_delete_user</property>
+        <property name="text" translatable="yes">Delete</property>
+        <layout manager="place">
+          <property name="anchor">nw</property>
+          <property name="width">50</property>
+          <property name="x">230</property>
+          <property name="y">360</property>
+        </layout>
       </object>
     </child>
   </object>

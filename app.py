@@ -1,3 +1,4 @@
+import json
 import pathlib
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -8,11 +9,13 @@ import os
 from tkinter import messagebox
 import _tkinter
 from datetime import datetime
+import cryptography
 
 PROJECT_PATH = pathlib.Path(__file__).parent
 PROJECT_UI = PROJECT_PATH / "app.ui"
-BYPASS_LOGIN = True
+BYPASS_LOGIN = False
 LOG_LEVEL = 3
+PRINT_CONSOLE = True
 
 
 class Main_window:
@@ -21,8 +24,8 @@ class Main_window:
         builder.add_resource_path(PROJECT_PATH)
         builder.add_from_file(PROJECT_UI)
         self.root = master
-        self.log_root = None
-        self.log_window = None
+        self.edit_root = None
+        self.edit_window = None
         #self.root.resizable(False, False)
         self.main_window = builder.get_object('main_window', master)
         self.main_frame = builder.get_object('frame_main', master)
@@ -30,20 +33,22 @@ class Main_window:
 
         #self.log_frame.pack(expand='true', fill='both', side='top')
         self.frame_mailbox.pack_forget()
+        self.mailbox_opened = False
 
         builder.connect_callbacks(self)
 
-        self.logger = Logging(LOG_LEVEL)
+        self.logger = Logging(LOG_LEVEL, PRINT_CONSOLE)
         self.input_file_name = ""
         self.signature_file_name = ""
         self.log_text = ""
         self.log_ctr = 0
-        self.mailbox_opened = False
-        self.log_window_opened = False
-        self.user_edit_opened = False
+        self.user_database = self.load_user_database()
+        self.owner = self.user_database[0]
+        for user in self.user_database:
+            self.logger.log_info(user.print_user())
 
     def run(self):
-        self.logger.log_debug("Main window stared")
+        self.logger.log_debug("Main window opened.")
         self.main_window.mainloop()
 
     def b_start_ecdh(self):
@@ -57,10 +62,6 @@ class Main_window:
         input_file_name.insert(0, os.path.basename(path))
         input_file_name.config(state="readonly")
         self.input_file_name = os.path.normpath(path)
-
-    def b_choose_user(self):
-        print(self.main_window.winfo_height())
-        print(self.main_window.winfo_width())
 
     def b_start_sign(self):
         print("Signing: " + self.input_file_name)
@@ -97,12 +98,14 @@ class Main_window:
             self.mailbox_opened = False
 
     def b_edit_user(self):
-        if not self.user_edit_opened:
-            self.user_edit_opened = True
-            self.logger.log_info("edit opened")
-        else:
-            self.user_edit_opened = False
-            self.logger.log_info("edit closed")
+        if self.is_edit_open():
+            self.edit_root.destroy()
+            self.edit_root, self.edit_window = None, None
+            return
+        chosen_user = self.builder.get_object("chosen_user").get()
+        self.edit_root = tk.Tk()
+        self.edit_window = Edit_window(self.user_database, chosen_user, self.edit_root, self.logger)
+        self.edit_window.run()
 
     def b_console(self):
         if not self.logger.is_open():
@@ -113,13 +116,153 @@ class Main_window:
     def on_closing(self):
         if self.logger.is_open():
             self.logger.close_console()
-        print("Saving data")
+        if self.is_edit_open():
+            self.b_edit_user()
+        self.logger.log_debug("Main window closing. Saving data")
         self.root.destroy()
 
+    def is_edit_open(self):
+        try:
+            self.edit_root.state()
+            return True
+        except (_tkinter.TclError, AttributeError):
+            self.edit_root, self.edit_window = None, None
+            return False
+
+    def load_user_database(self):
+        user_database = []
+        # Index 0 = owner
+        user_database.append(User("alice", "Alice", "Alicova", "127.0.0.1", "pk", "sk", "note", True))
+        user_database.append(User("bob", "Bob", "Bobobvy", "127.0.0.1", "pk", "sk", "note", False))
+        return user_database
+
+    def update_chosen_user(self):
+        chosen_user_pick = self.builder.get_object("chosen_user")
+        username_list = []
+        for user in self.user_database:
+            username_list.append(user.username)
+        chosen_user_pick["values"] = username_list
+
+    def chosen_user_clicked(self, *args):
+        self.update_chosen_user()
+
+
+class User:
+    def __init__(self, username, name, surname, ip, pk, sk, note, is_owner=False):
+        self.username = username
+        self.name = name
+        self.surname = surname
+        self.ip = ip
+        self.pk = pk
+        self.sk = sk
+        self.note = note
+        self.is_owner = is_owner
+
+    def print_user(self):
+        return f"{self.username}, {self.name}, {self.surname}, {self.ip}, {self.pk}, {self.sk}, {self.note}, {self.is_owner}"
+
+
+class Edit_window:
+    def __init__(self, user_database, username, master, logger):
+        self.builder = builder = pygubu.Builder()
+        builder.add_resource_path(PROJECT_PATH)
+        builder.add_from_file(PROJECT_UI)
+        self.mainwindow = builder.get_object('edit_frame', master)
+        self.root = master
+        builder.connect_callbacks(self)
+
+        self.logger = logger
+        self.user_database = user_database
+        self.username = username
+        self.user = None
+        self.e_username = self.builder.get_object("e_username")
+        self.e_name = self.builder.get_object("e_name")
+        self.e_surname = self.builder.get_object("e_surname")
+        self.e_ip = self.builder.get_object("e_ip")
+        self.e_pk = self.builder.get_object("e_pk")
+        self.e_sk = self.builder.get_object("e_sk")
+        self.e_note = self.builder.get_object("e_note")
+        self.user_id = self.find_user_index(self.find_user(username))
+        if self.user_id == None:
+            # Empty user
+            self.user = User("", "", "", "", "", "", "")
+        else:
+            self.user = self.find_user(username)
+        self.e_username.insert(0, self.user.username)
+        self.e_name.insert(0, self.user.name)
+        self.e_surname.insert(0, self.user.surname)
+        self.e_ip.insert(0, self.user.ip)
+        self.e_pk.insert(0, self.user.pk)
+        self.e_sk.insert(0, self.user.sk)
+        self.e_note.insert(1.0, self.user.note)
+
+    def run(self):
+        self.mainwindow.mainloop()
+
+    def b_save(self):
+        self.user_id = self.find_user_index(self.find_user(self.e_username.get()))
+        if self.user_id == None:
+            self.logger.log_error(f"User: {self.e_username.get()} does not exist")
+            messagebox.showerror('Save user', f"User: {self.e_username.get()} does not exist.")
+            return
+        self.user_database[self.user_id].username = self.e_username.get()
+        self.user_database[self.user_id].name = self.e_name.get()
+        self.user_database[self.user_id].surname = self.e_surname.get()
+        self.user_database[self.user_id].ip = self.e_ip.get()
+        self.user_database[self.user_id].pk = self.e_pk.get()
+        self.user_database[self.user_id].sk = self.e_sk.get()
+        self.user_database[self.user_id].note = self.e_note.get(1.0, "end")
+        self.logger.log_info(f"Saving edited user: {self.e_username.get()}")
+
+    def b_add_user(self):
+        new_user = User(self.e_username.get(),
+                        self.e_name.get(),
+                        self.e_surname.get(),
+                        self.e_ip.get(),
+                        self.e_pk.get(),
+                        self.e_sk.get(),
+                        self.e_note.get(1.0, "end"))
+        if new_user.username == "":
+            self.logger.log_error(f"You cannot create user without username")
+            messagebox.showerror('Add user', f"You cannot create user without username")
+            del new_user
+            return
+        for user in self.user_database:
+            if user.username == new_user.username:
+                self.logger.log_error(f"User: {self.e_username.get()} already exists.")
+                messagebox.showerror('Add user', f"User: {self.e_username.get()} already exists.")
+                del new_user
+                return
+        self.user_database.append(new_user)
+        self.logger.log_info(f"Adding new user: {self.e_username.get()}")
+
+    def b_delete_user(self):
+        self.user_id = self.find_user_index(self.find_user(self.e_username.get()))
+        if self.user_id == None:
+            self.logger.log_error(f"User: {self.e_username.get()} does not exist")
+            messagebox.showerror('Save user', f"User: {self.e_username.get()} does not exist.")
+            return
+        if self.user_id == 0:
+            self.logger.log_error(f"You cannot delete owner user.")
+            messagebox.showerror('Delete user', f"You cannot delete owner user.")
+
+        del self.user_database[self.user_id]
+        self.logger.log_info(f"Deleting user: {self.e_username.get()}")
+
+    def find_user(self, username):
+        for user in self.user_database:
+            if user.username == username:
+                return user
+        return None
+
+    def find_user_index(self, user):
+        try:
+            return self.user_database.index(user)
+        except ValueError:
+            return None
 
 class Logging:
-
-    def __init__(self, level=0):
+    def __init__(self, level=0, print_console=False):
         self.command_history = []
 
         self.log_root = None
@@ -127,19 +270,24 @@ class Logging:
         self.log_format = ("%d-%m-%Y_%H:%M:%S")
         # 0 - error, 1 - info, 2 - debug
         if not isinstance(level, int):
+            print("Invalid log level (0 - error, 1 - info, 2 - debug).")
             exit()
         self.level = level
+        self.print_console = print_console
 
     def open_console(self):
+        if self.is_open():
+            return
         self.log_root = tk.Tk()
         self.log_window = Log_window(self.log_root, "")
         self._update()
         self.log_window.run()
 
     def close_console(self):
-        if self.is_open():
-            self.log_root.destroy()
-            self.log_root, self.log_window = None, None
+        if not self.is_open():
+            return
+        self.log_root.destroy()
+        self.log_root, self.log_window = None, None
 
     def is_open(self):
         try:
@@ -153,16 +301,22 @@ class Logging:
         if self.level < 3:
             return
         self.command_history.append(f"{datetime.now().strftime(self.log_format)}:DEBUG:{string}")
+        if self.print_console:
+            print(f"{datetime.now().strftime(self.log_format)}:DEBUG:{string}")
         self._update()
 
     def log_info(self, string):
         if self.level < 2:
             return
         self.command_history.append(f"{datetime.now().strftime(self.log_format)}:INFO:{string}")
+        if self.print_console:
+            print(f"{datetime.now().strftime(self.log_format)}:INFO:{string}")
         self._update()
 
     def log_error(self, string):
         self.command_history.append(f"{datetime.now().strftime(self.log_format)}:ERROR:{string}")
+        if self.print_console:
+            print(f"{datetime.now().strftime(self.log_format)}:ERROR:{string}")
         self._update()
 
     def change_level(self, level):
@@ -210,6 +364,8 @@ class Login_window:
         self.file_name = ""
         self.password = ""
         self.unlock = False
+        self.encrypted_database = ""
+        self.decrypted_database = ""
 
         self.builder.get_object("password").focus_set()
 
@@ -224,33 +380,52 @@ class Login_window:
         file_name_field.config(state="readonly")
         self.file_name = os.path.normpath(path)
 
-    def login(self, *args):
-        password_field = self.builder.get_object("password")
-        password = password_field.get()
+        if not self.load_database(self.file_name):
+            messagebox.showerror('login', 'Invalid database file.')
 
+    def login(self, *args):
         if BYPASS_LOGIN:
             self.unlock = True
             self.mainwindow.quit()
             return
 
+        password_field = self.builder.get_object("password")
+        password = password_field.get()
+
         if not self.file_name or not password:
-            messagebox.showinfo('login', 'Empty username or password')
+            messagebox.showerror('login', 'Empty username or password')
             password_field.delete(0, "end")
             password_field.focus_set()
             return
+        # Load public key
+        try:
+            PKx = self.encrypted_database["public_key"]["x"]
+            PKy = self.encrypted_database["public_key"]["y"]
+            nonce = self.encrypted_database["nonce"]
+            mac = self.encrypted_database["mac"]
+            encrypted_data = self.encrypted_database["database"]
+        except (TypeError, KeyError):
+            messagebox.showerror('login', 'Invalid database file.')
+            return
 
-        if self.verify_password(password, self.file_name):
-            self.unlock = True
-            messagebox.showinfo('login', 'Success')
-            self.mainwindow.quit()
+        if not cryptography.validate_password(password, (PKx, PKy)):
+            messagebox.showerror('login', 'Authentication field')
+            return
 
-    @staticmethod
-    def verify_password(password, file_path):
+        decryption_key = cryptography.derive_key(password)
+        decrypted_data = cryptography.decrypt_data(decryption_key, nonce, mac, encrypted_data)
+        self.decrypted_database = decrypted_data
+        self.unlock = True
+        self.mainwindow.quit()
 
-        if password:
-            return True
-        else:
-            return True
+
+    def load_database(self, database_path):
+        try:
+            with open(database_path, "r") as f:
+                self.encrypted_database = json.load(f)
+        except json.decoder.JSONDecodeError:
+            return False
+        return True
 
 
 def main():
