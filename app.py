@@ -19,7 +19,7 @@ PRINT_CONSOLE = True
 
 
 class Main_window:
-    def __init__(self, master=None):
+    def __init__(self, master, decrypted_database, database_path):
         self.builder = builder = pygubu.Builder()
         builder.add_resource_path(PROJECT_PATH)
         builder.add_from_file(PROJECT_UI)
@@ -42,8 +42,11 @@ class Main_window:
         self.signature_file_name = ""
         self.log_text = ""
         self.log_ctr = 0
-        self.user_database = self.load_user_database()
-        self.owner = self.user_database[0]
+        #self.user_database = self.load_user_database()
+        self.database = decrypted_database
+        self.database_path = database_path
+        self.user_database = self.load_user_database(decrypted_database)
+        #self.owner = self.user_database[0]
         for user in self.user_database:
             self.logger.log_info(user.print_user())
 
@@ -52,8 +55,9 @@ class Main_window:
         self.main_window.mainloop()
 
     def b_start_ecdh(self):
-        print("ECDH")
-        pass
+        alice_d = int("0xaabbccdd", 16)
+        bob_d = int("0xaabbccff", 16)
+        cryptography.ecdh(alice_d, bob_d)
 
     def b_open(self):
         input_file_name = self.builder.get_object("chosen_input_file")
@@ -113,12 +117,31 @@ class Main_window:
         else:
             self.logger.close_console()
 
+    def save_database(self):
+        user_database_dict = {}
+        for index, user in enumerate(self.user_database):
+            user_database_dict[index] = user.to_dict()
+
+        decryption_key = self.database["password_hash"]
+        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(decryption_key, json.dumps(user_database_dict))
+        self.database["database"] = ciphertext.hex()
+        self.database["nonce"] = nonce.hex()
+        self.database["mac"] = mac.hex()
+        del self.database["password_hash"]
+        with open(self.database_path, "w") as f:
+            json.dump(self.database, f, indent=3)
+
+        #print(json.dumps(self.database, indent=3))
+
+
+
     def on_closing(self):
         if self.logger.is_open():
             self.logger.close_console()
         if self.is_edit_open():
             self.b_edit_user()
         self.logger.log_debug("Main window closing. Saving data")
+        self.save_database()
         self.root.destroy()
 
     def is_edit_open(self):
@@ -129,11 +152,18 @@ class Main_window:
             self.edit_root, self.edit_window = None, None
             return False
 
-    def load_user_database(self):
+    def load_user_database(self, database):
         user_database = []
         # Index 0 = owner
-        user_database.append(User("alice", "Alice", "Alicova", "127.0.0.1", "pk", "sk", "note", True))
-        user_database.append(User("bob", "Bob", "Bobobvy", "127.0.0.1", "pk", "sk", "note", False))
+        for user in database["database"]:
+            user_database.append(User(
+                            database["database"][user]["username"],
+                            database["database"][user]["name"],
+                            database["database"][user]["surname"],
+                            database["database"][user]["ip"],
+                            database["database"][user]["pk"],
+                            database["database"][user]["sk"],
+                            database["database"][user]["note"]))
         return user_database
 
     def update_chosen_user(self):
@@ -148,7 +178,7 @@ class Main_window:
 
 
 class User:
-    def __init__(self, username, name, surname, ip, pk, sk, note, is_owner=False):
+    def __init__(self, username, name, surname, ip, pk, sk, note):
         self.username = username
         self.name = name
         self.surname = surname
@@ -156,10 +186,21 @@ class User:
         self.pk = pk
         self.sk = sk
         self.note = note
-        self.is_owner = is_owner
+
+    def to_dict(self):
+        user_dict = {
+            "username": self.username,
+            "name": self.name,
+            "surname": self.surname,
+            "ip": self.ip,
+            "pk": self.pk,
+            "sk": self.sk,
+            "note": self.note
+        }
+        return user_dict
 
     def print_user(self):
-        return f"{self.username}, {self.name}, {self.surname}, {self.ip}, {self.pk}, {self.sk}, {self.note}, {self.is_owner}"
+        return f"{self.username}, {self.name}, {self.surname}, {self.ip}, {self.pk}, {self.sk}, {self.note}"
 
 
 class Edit_window:
@@ -399,11 +440,11 @@ class Login_window:
             return
         # Load public key
         try:
-            PKx = self.encrypted_database["public_key"]["x"]
-            PKy = self.encrypted_database["public_key"]["y"]
-            nonce = self.encrypted_database["nonce"]
-            mac = self.encrypted_database["mac"]
-            encrypted_data = self.encrypted_database["database"]
+            PKx = int(self.encrypted_database["public_key"]["x"], 16)
+            PKy = int(self.encrypted_database["public_key"]["y"], 16)
+            nonce = bytes.fromhex(self.load_hex(self.encrypted_database["nonce"]))
+            mac = bytes.fromhex(self.load_hex(self.encrypted_database["mac"]))
+            encrypted_data = bytes.fromhex(self.load_hex(self.encrypted_database["database"]))
         except (TypeError, KeyError):
             messagebox.showerror('login', 'Invalid database file.')
             return
@@ -412,12 +453,24 @@ class Login_window:
             messagebox.showerror('login', 'Authentication field')
             return
 
-        decryption_key = cryptography.derive_key(password)
-        decrypted_data = cryptography.decrypt_data(decryption_key, nonce, mac, encrypted_data)
-        self.decrypted_database = decrypted_data
+        decryption_key = cryptography.get_hash(password)
+        decrypted_data = cryptography.decrypt_AES_GCM(decryption_key, nonce, mac, encrypted_data)
+        if not decrypted_data:
+            messagebox.showerror('login', 'Authentication field. MAC failed')
+            return
+
+        self.decrypted_database = self.encrypted_database
+        self.decrypted_database["database"] = json.loads(decrypted_data)
+        self.decrypted_database["password_hash"] = decryption_key
+        del password
         self.unlock = True
         self.mainwindow.quit()
 
+    def load_hex(self, hex_string):
+        if hex_string.startswith("0x"):
+            return hex_string[2:]
+        else:
+            return hex_string
 
     def load_database(self, database_path):
         try:
@@ -439,7 +492,7 @@ def main():
         exit()
 
     root = tk.Tk()
-    main_window = Main_window(root)
+    main_window = Main_window(root, login_window.decrypted_database, login_window.file_name)
     root.protocol("WM_DELETE_WINDOW", main_window.on_closing)
     main_window.run()
 

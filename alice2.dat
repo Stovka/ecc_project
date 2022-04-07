@@ -1,0 +1,38 @@
+{
+  "public_key": {
+    "x": "0xa10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d81196452",
+    "y": "0x4f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e"
+  },
+  "nonce": "ea04018804b9bdc5bddfc2e2de4951dd",
+  "mac": "4f515bc767bb35b7a87b28b6462115f2",
+  "database": "2947a095e4dc24fd93fc1a0a92d947feebf8824dde0146558624186638ba936acc4968210597279566cf2d1c51d9ff6095a3e87b90575839f1be6a212173a0e9975a423d42984b0cbebf49ed470e70dce47584c671db60d7e88885bfb38aaa458757651ecc822c238b0ee3db968949328486950e716586a64d770da40016ce90c22757dbf8ea14f0c5367a61efe3582160d739d3e0e2138d52fd38310843227fd5dee50ffafdf684b3c558ccffff955f7eddcd29d8331fe8f81c06087bc8c702957fcd29fdbf67fa0b89b7fb9c48660db95b170669e0ba7b36c4aa1a04dfabebdc55e295dc0ba5b625f319bb3f6a58906ee8f3cf65bc087e8614da075cd4d74cfadbef62fedda0a7b4cef221f9b0a0d76aa23aa869f23208a97b156ea4f0a2b41480bd302203c143bcfda627c97d08d37cb90ba204407b1e8a94c611b47402d28e247b20100c9f938ac79767219d057ea3fa5d98685f1384fea76ceb95e7d02f08579cdf6d559bed64410c35a25944cf7ba8e4bb",
+  "database2": {
+    "0": {
+      "username": "alice",
+      "name": "Alice",
+      "surname": "Alicova",
+      "ip": "127.0.0.1",
+      "pk": "pk",
+      "sk": "sk",
+      "note": "note"
+    },
+    "1": {
+      "username": "bob",
+      "name": "Bob",
+      "surname": "Bobobvy",
+      "ip": "127.0.0.1",
+      "pk": "pk",
+      "sk": "sk",
+      "note": "note"
+    },
+    "2": {
+      "username": "Bobek",
+      "name": "Bob",
+      "surname": "Bobobvy",
+      "ip": "127.0.0.1",
+      "pk": "pk",
+      "sk": "sk",
+      "note": "note"
+    }
+  }
+}
