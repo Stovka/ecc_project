@@ -298,6 +298,34 @@
             </layout>
           </object>
         </child>
+        <child>
+          <object class="ttk.Label" id="label_owner">
+            <property name="cursor">arrow</property>
+            <property name="font">{Arial} 16 {}</property>
+            <property name="justify">center</property>
+            <property name="text" translatable="yes">alice account</property>
+            <property name="textvariable">string:l_owner</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="x">125</property>
+              <property name="y">10</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="ttk.Button" id="b_reconnect">
+            <property name="command" type="command" cbtype="simple">b_reconnect</property>
+            <property name="text" translatable="yes">Reconnect</property>
+            <layout manager="place">
+              <property name="anchor">nw</property>
+              <property name="height">25</property>
+              <property name="width">160</property>
+              <property name="x">200</property>
+              <property name="y">200</property>
+            </layout>
+          </object>
+        </child>
       </object>
     </child>
     <child>
@@ -417,7 +445,7 @@
     <child>
       <object class="ttk.Label" id="l_ip">
         <property name="font">{Arial} 12 {}</property>
-        <property name="text" translatable="yes">IP</property>
+        <property name="text" translatable="yes">IP and port</property>
         <layout manager="place">
           <property name="anchor">nw</property>
           <property name="x">25</property>
@@ -426,7 +454,7 @@
       </object>
     </child>
     <child>
-      <object class="ttk.Entry" id="e_ip">
+      <object class="ttk.Entry" id="e_ip_and_port">
         <layout manager="place">
           <property name="anchor">nw</property>
           <property name="width">170</property>

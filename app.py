@@ -1,7 +1,10 @@
+import asyncio
 import json
 import pathlib
+import time
 import tkinter as tk
 import tkinter.ttk as ttk
+from enum import Enum
 from tkinter import filedialog as fd
 import pygubu
 
@@ -9,7 +12,9 @@ import os
 from tkinter import messagebox
 import _tkinter
 from datetime import datetime
+import threading
 import cryptography
+import networking
 
 PROJECT_PATH = pathlib.Path(__file__).parent
 PROJECT_UI = PROJECT_PATH / "app.ui"
@@ -30,10 +35,10 @@ class Main_window:
         self.main_window = builder.get_object('main_window', master)
         self.main_frame = builder.get_object('frame_main', master)
         self.frame_mailbox = builder.get_object('frame_mailbox', master)
-
         #self.log_frame.pack(expand='true', fill='both', side='top')
         self.frame_mailbox.pack_forget()
         self.mailbox_opened = False
+        self.ecdh_random = False
 
         builder.connect_callbacks(self)
 
@@ -42,13 +47,17 @@ class Main_window:
         self.signature_file_name = ""
         self.log_text = ""
         self.log_ctr = 0
-        #self.user_database = self.load_user_database()
+        self.client = None
         self.database = decrypted_database
         self.database_path = database_path
         self.user_database = self.load_user_database(decrypted_database)
-        #self.owner = self.user_database[0]
-        for user in self.user_database:
-            self.logger.log_info(user.print_user())
+        self.owner = self.user_database[0]
+        self.root.title(self.owner.username + " address: " + self.owner.ip + " offline")
+        self.builder.get_variable("l_owner").set(self.owner.username + " account")
+
+        self.logger.log_info(f"Logged in as: {self.owner.username}")
+        self.logger.log_info(f"User database: {[user.username for user in self.user_database]}")
+        self.start_listening()
 
     def run(self):
         self.logger.log_debug("Main window opened.")
@@ -57,7 +66,24 @@ class Main_window:
     def b_start_ecdh(self):
         alice_d = int("0xaabbccdd", 16)
         bob_d = int("0xaabbccff", 16)
-        cryptography.ecdh(alice_d, bob_d)
+        chosen_user = self.builder.get_object("chosen_user").get()
+        if not chosen_user:
+            self.logger.log_error("No User chosen")
+            return
+
+        if not self.ecdh_random:
+            # Start ECDH
+            # Generate Alice random number, send it to Bob
+            random_bytes = cryptography.random_bytes(cryptography.key_length)
+            point = cryptography.ecdh(random_bytes)
+
+        client = networking.Client()
+        ip_and_port = self.find_user(chosen_user).ip.split(":")
+        ip = ip_and_port[0]
+        port = int(ip_and_port[1])
+        send_string = json.dumps({'username': self.owner.username, 'action': str(Actions.ECDH_START), 'Px': str(point.x), 'Py': str(point.y)})
+        self.logger.log_info(f"sending: {send_string}")
+        client.send(ip, port, send_string)
 
     def b_open(self):
         input_file_name = self.builder.get_object("chosen_input_file")
@@ -69,7 +95,8 @@ class Main_window:
 
     def b_start_sign(self):
         print("Signing: " + self.input_file_name)
-        pass
+        client2 = networking.Client("127.0.0.1", 9999)
+        client2.send("127.0.0.1", 9999, "zprava")
 
     def b_start_verify(self):
         print("Verifying: " + self.signature_file_name)
@@ -84,14 +111,16 @@ class Main_window:
         self.input_file_name = os.path.normpath(path)
 
     def b_start_send(self):
-        mailbox_entry = self.builder.get_object("mailbox_entry")
+        #mailbox_entry = self.builder.get_object("mailbox_entry")
 
-        self.log_ctr += 1
-        self.log_text = f"ahoj {self.log_ctr} Alice sent to bob from ip 127.00.1 to 192.168.1.2 message blah blah\n" + self.log_text
-        mailbox_entry.config(state="normal")
-        mailbox_entry.delete(1.0,"end")
-        mailbox_entry.insert(1.0, self.log_text)
-        mailbox_entry.config(state="disabled")
+        #self.log_ctr += 1
+        #self.log_text = f"ahoj {self.log_ctr} Alice sent to bob from ip 127.00.1 to 192.168.1.2 message blah blah\n" + self.log_text
+        #mailbox_entry.config(state="normal")
+        #mailbox_entry.delete(1.0,"end")
+        #mailbox_entry.insert(1.0, self.log_text)
+        #mailbox_entry.config(state="disabled")
+        client = networking.Client()
+        client.send("127.0.0.1", 9999, "Zprava od Boba")
 
     def b_start_mailbox(self):
         if not self.mailbox_opened:
@@ -130,16 +159,17 @@ class Main_window:
         del self.database["password_hash"]
         with open(self.database_path, "w") as f:
             json.dump(self.database, f, indent=3)
-
         #print(json.dumps(self.database, indent=3))
-
-
 
     def on_closing(self):
         if self.logger.is_open():
             self.logger.close_console()
         if self.is_edit_open():
             self.b_edit_user()
+        try:
+            self.client.stop_receiving()
+        except AttributeError:
+            pass  # Already dead
         self.logger.log_debug("Main window closing. Saving data")
         self.save_database()
         self.root.destroy()
@@ -176,6 +206,52 @@ class Main_window:
     def chosen_user_clicked(self, *args):
         self.update_chosen_user()
 
+    def b_reconnect(self):
+        self.start_listening()
+
+    def start_listening(self):
+        try:
+            ip_and_port = self.owner.ip.split(":")
+            ip = ip_and_port[0]
+            port = int(ip_and_port[1])
+        except IndexError:
+            self.logger.log_error(f"Incomplete IP and port: {self.owner.ip}")
+            messagebox.showerror('Network error', f"Could not start listening on: {self.owner.ip}")
+            self.client = None
+        #self.root.title("account: " + self.owner.username + " address: " + self.owner.ip)
+        self.client = networking.Client(ip, port, self.receive_data)
+        self.client.start_receiving()
+        time.sleep(0.5)  # Time to die
+        if not self.client.is_alive:
+            self.logger.log_error("Creating socket failed")
+            messagebox.showerror('Network error', f"Could not start listening on ip: {ip} port: {port}")
+            self.root.title(self.owner.username + " address: " + self.owner.ip + " offline")
+            self.client = None
+        self.logger.log_info(f"Listening on {ip}:{port}")
+        self.root.title(self.owner.username + " address: " + self.owner.ip + " online")
+
+    def test_connection(self):
+        client = networking.Client()
+        ip_and_port = self.owner.ip.split(":")
+        ip = ip_and_port[0]
+        port = int(ip_and_port[1])
+        client.send(ip, port, json.dumps({'action': 0, 'data': 'test'}))
+
+    def find_user(self, username):
+        for user in self.user_database:
+            if user.username == username:
+                return user
+        return None
+
+    def receive_data(self, data):
+        print("App received data:")
+        print(data)
+
+class Actions(Enum):
+    SEND_DATA = 1
+    ECDH_START = 2
+    ECDH_COMPLETE = 3
+    dog = 4
 
 class User:
     def __init__(self, username, name, surname, ip, pk, sk, note):
@@ -219,7 +295,7 @@ class Edit_window:
         self.e_username = self.builder.get_object("e_username")
         self.e_name = self.builder.get_object("e_name")
         self.e_surname = self.builder.get_object("e_surname")
-        self.e_ip = self.builder.get_object("e_ip")
+        self.e_ip_and_port = self.builder.get_object("e_ip_and_port")
         self.e_pk = self.builder.get_object("e_pk")
         self.e_sk = self.builder.get_object("e_sk")
         self.e_note = self.builder.get_object("e_note")
@@ -232,7 +308,7 @@ class Edit_window:
         self.e_username.insert(0, self.user.username)
         self.e_name.insert(0, self.user.name)
         self.e_surname.insert(0, self.user.surname)
-        self.e_ip.insert(0, self.user.ip)
+        self.e_ip_and_port.insert(0, self.user.ip)
         self.e_pk.insert(0, self.user.pk)
         self.e_sk.insert(0, self.user.sk)
         self.e_note.insert(1.0, self.user.note)
@@ -249,7 +325,7 @@ class Edit_window:
         self.user_database[self.user_id].username = self.e_username.get()
         self.user_database[self.user_id].name = self.e_name.get()
         self.user_database[self.user_id].surname = self.e_surname.get()
-        self.user_database[self.user_id].ip = self.e_ip.get()
+        self.user_database[self.user_id].ip = self.e_ip_and_port.get()
         self.user_database[self.user_id].pk = self.e_pk.get()
         self.user_database[self.user_id].sk = self.e_sk.get()
         self.user_database[self.user_id].note = self.e_note.get(1.0, "end")
@@ -259,7 +335,7 @@ class Edit_window:
         new_user = User(self.e_username.get(),
                         self.e_name.get(),
                         self.e_surname.get(),
-                        self.e_ip.get(),
+                        self.e_ip_and_port.get(),
                         self.e_pk.get(),
                         self.e_sk.get(),
                         self.e_note.get(1.0, "end"))

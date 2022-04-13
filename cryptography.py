@@ -47,20 +47,20 @@ def decrypt_AES_GCM(key, nonce, mac, encrypted_data):
         return None
     return plaintext
 
-def ecdh(alice_d, bob_d):
-    # alice_d, bob_d in hex
+def ecdh(bytes):
     curve = ECC._curves[ecc_curve]
     point_G = EccPoint(curve.Gx, curve.Gy, ecc_curve)
 
-    #alice_d = int(alice_d, 16)
-    #bob_d = int(bob_d, 16)
-    #d = int.from_bytes(get_hash(password), byteorder="big", signed=False)
-    daG = point_G * alice_d
-    dbG = point_G * bob_d
+    d = int.from_bytes(bytes, byteorder="big", signed=False)
+    dG = point_G * d
+    #dbG = point_G * bob_d
+    return dG
+    #shared1 = daG * bob_d
+    #shared2 = dbG * alice_d
+    #print(shared1.x)
+    #print(shared2.x)
+    #print(shared1.y)
+    #print(shared2.y)
 
-    shared1 = daG * bob_d
-    shared2 = dbG * alice_d
-    print(shared1.x)
-    print(shared2.x)
-    print(shared1.y)
-    print(shared2.y)
+def random_bytes(length):
+    return get_random_bytes(length)
