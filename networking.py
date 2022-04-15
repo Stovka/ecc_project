@@ -1,40 +1,84 @@
 import socket
 import threading
+import socketserver
 
-class Client:
-    def __init__(self, ip=None, port=None, received_data = None):
+
+class RequestHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        to_return = bytearray()
+        data = self.request.recv(1024)
+        while data:
+            to_return += data
+            data = self.request.recv(1024)
+        if self.server.receive_string:
+            self.server.callback(to_return.decode())
+        else:
+            self.server.callback(to_return)
+
+
+class Server:
+    def __init__(self, ip=None, port=None, callback_mtd=None, receive_string=True):
         self.ip = ip
         self.port = port
-        self.receive_thread = threading.Thread(target=self.start_thread, args=(received_data,))
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.conn = None
-        self.is_alive = False
+        self.callback = callback_mtd
+        self.server_thread = None
+        self.socket = None
+        self.server = None
+        self.receive_string = receive_string
+        self.is_running = False
 
-    def send(self, ip, port, data):
+    def _start_server(self):
+        try:
+            with self.server:
+                self.is_running = True
+                self.server.serve_forever()
+        except OSError:
+            # Thread killed
+            self.is_running = False
+
+    def _stop_server(self):
+        try:
+            self.server.shutdown()
+            self.server.close()
+        except AttributeError:
+            pass
+        self.is_running = False
+
+    def stop_server(self):
+        self._stop_server()
+
+    def start_server(self):
+        try:
+            # Kill server if running
+            if self.is_running:
+                self._stop_server()
+            if self.server_thread.is_alive():
+                self._stop_server()
+                self.server_thread.join()
+        except AttributeError:
+            pass
+        # Create new server
+        self.server_thread = threading.Thread(target=self._start_server)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server = socketserver.TCPServer((self.ip, self.port), RequestHandler)
+        self.server.callback = self.callback
+        if self.receive_string:
+            self.server.receive_string = True
+        else:
+            self.server.receive_string = False
+        self.server_thread.start()
+
+
+class Client:
+    @staticmethod
+    def send(ip, port, bytes_data):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((ip, port))
-            s.sendall(data.encode())
+            s.sendall(bytes_data)
 
-    def stop_receiving(self):
-        self.socket.close()
-
-    def start_receiving(self):
-        self.receive_thread.start()
-
-    def start_thread(self, received_data):
-        try:
-            self.is_alive = True
-            self.socket.bind((self.ip, self.port))
-            self.socket.listen()
-            self.conn, addr = self.socket.accept()
-            while True:
-                recv_msg = self.conn.recv(1024)
-                if not recv_msg:
-                    break
-                received_data(recv_msg.decode())
-        except OSError as err:
-            # Thread killed
-            print(err)
-            self.is_alive = False
-            self.socket = None
+    @staticmethod
+    def send_string(ip, port, string_data):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((ip, port))
+            s.sendall(string_data.encode())
 
