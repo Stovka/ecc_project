@@ -24,18 +24,28 @@ def validate_password(password, public_point):
         return True
     return False
 
-def get_coordinates(bytes):
+def get_coordinates(bytes_cor):
     PKx = bytearray()
     PKy = bytearray()
     # Convert bytes to x,y int coordinates
-    for i, b in enumerate(bytes):
-        if i < len(bytes) / 2:
+    for i, b in enumerate(bytes_cor):
+        if i < len(bytes_cor) / 2:
             PKx.append(b)
         else:
             PKy.append(b)
     PKx = int_from_bytes(PKx)
     PKy = int_from_bytes(PKy)
     return PKx, PKy
+
+def get_key_from_coordinates(bytes_cor):
+    key = bytearray()
+    # Convert bytes to x !BYTES! coordinate
+    for i, b in enumerate(bytes_cor):
+        if i < key_length:
+            key.append(b)
+        else:
+            break
+    return bytes(key)
 
 def derive_key(password):
     # Calculate hash of password
@@ -70,7 +80,7 @@ def decrypt_AES_GCM(key, nonce, mac, encrypted_data):
         return None
     return plaintext
 
-def ecdh_start(bytes):
+def multiply_generator(bytes):
     curve = ECC._curves[ecc_curve]
     point_G = EccPoint(curve.Gx, curve.Gy, ecc_curve)
     d = int_from_bytes(bytes)

@@ -12,16 +12,18 @@ import os
 from tkinter import messagebox
 import _tkinter
 from datetime import datetime
-import threading
 import cryptography
 import networking
 
+LOG_LEVEL = 3
+BYPASS_LOGIN = False
+PRINT_CONSOLE = True
+TRUST_PK = True  # Trust public keys sent by HELLO messages. Susceptible to MitM.
+ADD_HELLO = True  # Add user to contacts after receiving HELLO message.
+EXTENDED_HELLO = True  # Send more info to other users.
 PROJECT_PATH = pathlib.Path(__file__).parent
 PROJECT_UI = PROJECT_PATH / "app.ui"
 DOWNLOADS_PATH = "Downloads/"
-BYPASS_LOGIN = False
-LOG_LEVEL = 3
-PRINT_CONSOLE = True
 
 
 class Main_window:
@@ -56,6 +58,7 @@ class Main_window:
         self.database_path = database_path
         self.user_database = self.load_user_database(decrypted_database)
         self.owner = self.user_database[0]
+        self.owner.pk = self.database["pk"]  # Overwrite potentially invalid pk
         self.root.title(self.owner.username + " address: " + self.owner.ip + " offline")
         self.builder.get_variable("l_owner").set(self.owner.username + " account")
         self.downloads_path = self.create_downloads(os.path.normpath(DOWNLOADS_PATH))
@@ -70,6 +73,8 @@ class Main_window:
 
     # # # # # # # # # # # # # # # # # # # # #  Buttons # # # # # # # # # # # # # # # # # # # # #
     def b_start_sign(self):
+        """Method for signing files with ECDSA. It takes file (file.txt) and generates signature (file.txt.sig). It
+        uses owners sk (which is password hash)."""
         if not self.file_name_path:
             self.logger.log_error("No file to sign chosen")
             messagebox.showerror('Choose file', f"Choose file to sign first.")
@@ -85,6 +90,8 @@ class Main_window:
         messagebox.showinfo('Signature', f"Signature created: {self.file_name_path + '.sig'}")
 
     def b_start_verify(self):
+        """Method for verifying signatures with ECDSA. It takes two files (file.txt, file.txt.sig) and computes
+        verification of signature. It uses pk of user that is selected, owners of none."""
         if not self.signature_file_name_path or not self.file_name_path:
             self.logger.log_error("No file to verify chosen")
             messagebox.showerror('Choose file', f"Choose file to verify first.")
@@ -109,6 +116,164 @@ class Main_window:
         else:
             messagebox.showerror('Verify', f"Signature is wrong.")
 
+    def b_start_send(self):
+        chosen_user = self.builder.get_object("chosen_user").get()
+        if not chosen_user:
+            self.logger.log_error("No User chosen")
+            messagebox.showerror('Choose user', f"Choose user first.")
+            return
+        if not self.online:
+            self.logger.log_error("Cannot communicate while offline")
+            return
+        target_user = self.find_user(chosen_user)
+        target_ip, target_port = self.get_ip_and_port(target_user.ip)
+        if EXTENDED_HELLO:
+            hello_mtd = self.send_hello_full
+        else:
+            hello_mtd = self.send_hello
+        if not hello_mtd(target_ip, target_port):
+            messagebox.showerror('Network error', f"User: {chosen_user} on address {target_ip}:{target_port} is offline.")
+            return
+        if not self.file_name_path and not self.signature_file_name_path:
+            self.logger.log_error("No file chosen")
+            messagebox.showerror('Choose file', f"Choose file first.")
+            return
+
+        if not target_user.pk:
+            self.logger.log_error("Target user does not have public key")
+            messagebox.showerror('ECIES', f"Target user does not have public key")
+            return
+
+        b_file = None
+        if self.file_name_path:
+            self.logger.log_info(f"Sending file: {os.path.basename(self.file_name_path)} to: {chosen_user}")
+            # Send file
+            file_name = os.path.basename(self.file_name_path)
+            with open(self.file_name_path, 'rb') as f:
+                b_file = f.read()
+            # ECIES encryption here
+            nonce, mac, cipher_text, R = self.encrypt_ecies(target_user, file_name, b_file)
+            to_send = {'username': self.owner.username,
+                       'action': Actions.DATA.value,
+                       'nonce': cryptography.bytes_to_hex_string(nonce),
+                       'mac': cryptography.bytes_to_hex_string(mac),
+                       'R': cryptography.bytes_to_hex_string(R),
+                       'data': cryptography.bytes_to_hex_string(cipher_text)}
+            self.send_dict(target_ip, target_port, to_send)
+            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
+        if self.signature_file_name_path:
+            self.logger.log_info(f"Sending file: {os.path.basename(self.signature_file_name_path)} to: {chosen_user}")
+            # Send signature
+            file_name = os.path.basename(self.signature_file_name_path)
+            with open(self.signature_file_name_path, 'rb') as f:
+                b_file = f.read()
+            # ECIES encryption here
+            nonce, mac, cipher_text, R = self.encrypt_ecies(target_user, file_name, b_file)
+            to_send = {'username': self.owner.username,
+                       'action': Actions.DATA.value,
+                       'nonce': cryptography.bytes_to_hex_string(nonce),
+                       'mac': cryptography.bytes_to_hex_string(mac),
+                       'R': cryptography.bytes_to_hex_string(R),
+                       'data': cryptography.bytes_to_hex_string(cipher_text)}
+            self.send_dict(target_ip, target_port, to_send)
+            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
+
+    def received_file(self, data):
+        user = self.find_user(data["username"])
+        if not user:
+            self.logger.log_error(f"Username: {data['username']} not in contacts. Cannot decrypt file")
+            messagebox.showerror('File received', f"Username: {data['username']} not in contacts. Cannot decrypt file")
+        to_decrypt = cryptography.bytes_from_hex_string(data["data"])
+        R = cryptography.bytes_from_hex_string(data["R"])
+        nonce = cryptography.bytes_from_hex_string(data["nonce"])
+        mac = cryptography.bytes_from_hex_string(data["mac"])
+        # ECIES decryption here
+        decrypted = self.decrypt_ecies(R, nonce, mac, to_decrypt)
+        if not decrypted:
+            self.logger.log_error("Decryption Failed.")
+            return
+
+        filename, file = self.get_file_name(decrypted)
+        if not filename or not file:
+            self.logger.log_error("Decoding decrypted message.")
+            return
+        self.logger.log_info(f"File: {filename} received from: {data['username']}")
+        self.update_mailbox(f"From: {data['username']}, Received: {filename}")
+        with open(os.path.join(self.downloads_path, filename), "wb") as f:
+            f.write(file)
+
+    def b_start_ecdh(self):
+        """This method starts ECDH process. It computes da, Qa and sends Qa to Bob. Message is received and processed
+         by ecdh_response method."""
+        chosen_user = self.builder.get_object("chosen_user").get()
+        if not chosen_user:
+            self.logger.log_error("No User chosen")
+            messagebox.showerror('Choose user', f"Choose user first.")
+            return
+        if not self.online:
+            self.logger.log_error("Cannot communicate while offline")
+        # Contact Bob if alive
+        ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip)
+        if EXTENDED_HELLO:
+            hello_mtd = self.send_hello_full
+        else:
+            hello_mtd = self.send_hello
+        if not hello_mtd(ip, port):
+            messagebox.showerror('Network error', f"User: {chosen_user} on address {ip}:{port} seams offline.")
+            return
+        # Starting ECDH process
+        # Generate da
+        random_bytes = cryptography.random_bytes(cryptography.key_length)
+        # Calculate Qa = da * G
+        point_bytes = cryptography.multiply_generator(random_bytes)
+        # Save da
+        self.connections[chosen_user] = {"ecdh": {"da": random_bytes}}
+        # Send Qa to Bob
+        to_send = {'username': self.owner.username,
+                    'action': Actions.ECDH_START.value,
+                    'point': cryptography.bytes_to_hex_string(point_bytes)}
+        self.send_dict(ip, port, to_send)
+
+
+    def ecdh_response(self, data):
+        """This method finishes ECDH process. It is called twice per one ECDH process. First time when Bob receives
+        Qa from Alice then it computes Qb = db * G, K = db * Qa and sends Qb to Alice. Second time when Alice receives
+        Qb then it computes K = da * Qb."""
+        if data["action"] == Actions.ECDH_START.value:
+            # Bob received Qa
+            # Generate db
+            random_bytes = cryptography.random_bytes(cryptography.key_length)
+            # Calculate Qb = db * G
+            point_bytes = cryptography.multiply_generator(random_bytes)
+            # Calculate shared secret as K = db * Qa
+            shared_secret = cryptography.multiply_point(random_bytes, cryptography.bytes_from_hex_string(data["point"]))
+            self.logger.log_info(f"Shared secret for: {data['username']}: "
+                                 f"{cryptography.bytes_to_hex_string(shared_secret)}")
+            self.update_mailbox(f"From: {data['username']}, "
+                                f"Received: ECDH secret: {cryptography.bytes_to_hex_string(shared_secret)}")
+            try:
+                # Send calculated Qb to Alice
+                to_send = {
+                    'username': self.owner.username,
+                    'action': Actions.ECDH_COMPLETE.value,
+                    'point': cryptography.bytes_to_hex_string(point_bytes)}
+                ip, port = self.get_ip_and_port(self.find_user(data["username"]).ip)
+                self.send_dict(ip, port, to_send)
+            except AttributeError:
+                self.logger.log_error(f"User {data['username']} not it contacts. Cannot send ECDH reply.")
+                messagebox.showerror('ECDH', f"User {data['username']} not it contacts. Cannot send ECDH reply.")
+        else:  # data["action"] = Actions.ECDH_COMPLETE.value
+            # Alice received Qb
+            # Load da
+            session = self.connections[data["username"]]["ecdh"]
+            # Calculate shared secret as K = da * Qb
+            shared_secret = cryptography.multiply_point(session["da"],
+                                                        cryptography.bytes_from_hex_string(data["point"]))
+            self.logger.log_info(f"Shared secret for: {data['username']}: "
+                                 f"{cryptography.bytes_to_hex_string(shared_secret)}")
+            self.update_mailbox(f"From: {data['username']}, "
+                                f"Received: ECDH secret: {cryptography.bytes_to_hex_string(shared_secret)}")
+
     def b_choose_file(self):
         file_name = self.builder.get_object("chosen_input_file")
         path = fd.askopenfilename()
@@ -130,65 +295,6 @@ class Main_window:
         signature_file_name = self.builder.get_object("chosen_signature")
         self.update_text(signature_file_name, "")
         self.signature_file_name_path = ""
-
-    def b_start_send(self):
-        chosen_user = self.builder.get_object("chosen_user").get()
-        if not chosen_user:
-            self.logger.log_error("No User chosen")
-            messagebox.showerror('Choose user', f"Choose user first.")
-            return
-        if not self.online:
-            self.logger.log_error("Cannot communicate while offline")
-        ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip)
-        if not self.send_hello(ip, port):
-            messagebox.showerror('Network error', f"User: {chosen_user} on address {ip}:{port} seams offline.")
-            return
-        if not self.file_name_path and not self.signature_file_name_path:
-            self.logger.log_error("No file chosen")
-            messagebox.showerror('Choose file', f"Choose file first.")
-
-        b_file = None
-        if self.file_name_path:
-            # Send file
-            file_name = os.path.basename(self.file_name_path)
-            with open(self.file_name_path, 'rb') as f:
-                b_file = f.read()
-            nonce, mac, cipher_text = self.prepare_file(file_name, b_file)
-            to_send = {'username': self.owner.username,
-                       'action': Actions.DATA.value,
-                       'nonce': cryptography.bytes_to_hex_string(nonce),
-                       'mac': cryptography.bytes_to_hex_string(mac),
-                       'data': cryptography.bytes_to_hex_string(cipher_text)}
-            self.send_dict(ip, port, to_send)
-            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
-        if self.signature_file_name_path:
-            # Send signature
-            file_name = os.path.basename(self.signature_file_name_path)
-            with open(self.signature_file_name_path, 'rb') as f:
-                b_file = f.read()
-            nonce, mac, cipher_text = self.prepare_file(file_name, b_file)
-            to_send = {'username': self.owner.username,
-                       'action': Actions.DATA.value,
-                       'nonce': cryptography.bytes_to_hex_string(nonce),
-                       'mac': cryptography.bytes_to_hex_string(mac),
-                       'data': cryptography.bytes_to_hex_string(cipher_text)}
-            self.send_dict(ip, port, to_send)
-            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
-
-    def received_file(self, data):
-        user = self.find_user(data["username"])
-        if not user:
-            self.logger.log_error(f"Username: {data['username']} not in contacts. Cannot decrypt file")
-            messagebox.showerror('File received', f"Username: {data['username']} not in contacts. Cannot decrypt file")
-        filename_and_file = data["data"]
-        to_decrypt = cryptography.bytes_from_hex_string(filename_and_file)
-        ################################################ Decrypt file TO DO
-        decrypted = to_decrypt
-        filename, file = self.get_file_name(decrypted)
-        with open(os.path.join(self.downloads_path, filename), "wb") as f:
-            f.write(file)
-
-
 
     def b_start_mailbox(self):
         if not self.mailbox_opened:
@@ -214,75 +320,14 @@ class Main_window:
         else:
             self.logger.close_console()
 
-    def b_start_ecdh(self):
-        chosen_user = self.builder.get_object("chosen_user").get()
-        if not chosen_user:
-            self.logger.log_error("No User chosen")
-            messagebox.showerror('Choose user', f"Choose user first.")
-            return
-        if not self.online:
-            self.logger.log_error("Cannot communicate while offline")
-        # Contact Bob if alive
-        ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip)
-        if not self.send_hello(ip, port):
-            messagebox.showerror('Network error', f"User: {chosen_user} on address {ip}:{port} seams offline.")
-            return
-        # Start ECDH
-        # Generate da
-        random_bytes = cryptography.random_bytes(cryptography.key_length)
-        # Calculate Qa = da * G
-        point_bytes = cryptography.ecdh_start(random_bytes)
-        # Save da a Qa
-        self.connections[chosen_user] = {"ecdh": {"da": random_bytes}}
-        # Send Qa to Bob
-        to_send = {'username': self.owner.username,
-                    'action': Actions.ECDH_START.value,
-                    'point': cryptography.bytes_to_hex_string(point_bytes)}
-        self.send_dict(ip, port, to_send)
-
-
-    def ecdh_response(self, data):
-        if data["action"] == Actions.ECDH_START.value:
-            # Generate db
-            random_bytes = cryptography.random_bytes(cryptography.key_length)
-            # Calculate Qb = db * G
-            point_bytes = cryptography.ecdh_start(random_bytes)
-            # Calculate shared secret as K = db * Qa
-            shared_secret = cryptography.multiply_point(random_bytes, cryptography.bytes_from_hex_string(data["point"]))
-            self.logger.log_info(f"Shared secret for: {data['username']}: "
-                                 f"{cryptography.bytes_to_hex_string(shared_secret)}")
-            self.update_mailbox(f"From: {data['username']}, "
-                                f"Received: ECDH secret: {cryptography.bytes_to_hex_string(shared_secret)}")
-            try:
-                # Send calculated Qb to Alice
-                to_send = {
-                    'username': self.owner.username,
-                    'action': Actions.ECDH_COMPLETE.value,
-                    'point': cryptography.bytes_to_hex_string(point_bytes)}
-                ip, port = self.get_ip_and_port(self.find_user(data["username"]).ip)
-                self.send_dict(ip, port, to_send)
-            except AttributeError:
-                self.logger.log_error(f"User {data['username']} not it contacts. Cannot send ECDH reply.")
-                messagebox.showerror('ECDH', f"User {data['username']} not it contacts. Cannot send ECDH reply.")
-        else:
-            # Load da
-            session = self.connections[data["username"]]["ecdh"]
-            # Calculate shared secret as K = da * Qb
-            shared_secret = cryptography.multiply_point(session["da"],
-                                                        cryptography.bytes_from_hex_string(data["point"]))
-            self.logger.log_info(f"Shared secret for: {data['username']}: "
-                                 f"{cryptography.bytes_to_hex_string(shared_secret)}")
-            self.update_mailbox(f"From: {data['username']}, "
-                                f"Received: ECDH secret: {cryptography.bytes_to_hex_string(shared_secret)}")
-
     # # # # # # # # # # # # # # # # # # # # #  Helper methods # # # # # # # # # # # # # # # # # # # # #
     def save_database(self):
         user_database_dict = {}
         for index, user in enumerate(self.user_database):
             user_database_dict[index] = user.to_dict()
 
-        decryption_key = self.database["password_hash"]
-        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(decryption_key, json.dumps(user_database_dict))
+        encryption_key = self.database["password_hash"]
+        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(encryption_key, json.dumps(user_database_dict))
         self.database["database"] = ciphertext.hex()
         self.database["nonce"] = nonce.hex()
         self.database["mac"] = mac.hex()
@@ -311,15 +356,18 @@ class Main_window:
     def load_user_database(self, database):
         user_database = []
         # Index 0 = owner
-        for user in database["database"]:
-            user_database.append(User(
-                            database["database"][user]["username"],
-                            database["database"][user]["name"],
-                            database["database"][user]["surname"],
-                            database["database"][user]["ip"],
-                            database["database"][user]["pk"],
-                            database["database"][user]["sk"],
-                            database["database"][user]["note"]))
+        try:
+            for user in database["database"]:
+                user_database.append(User(
+                                database["database"][user]["username"],
+                                database["database"][user]["name"],
+                                database["database"][user]["surname"],
+                                database["database"][user]["ip"],
+                                database["database"][user]["pk"],
+                                database["database"][user]["note"]))
+        except TypeError:
+            self.logger.log_error("Database is not decrypted. Cannot start.")
+            exit()
         return user_database
 
     def get_file_name(self, b_filename_and_file):
@@ -333,16 +381,34 @@ class Main_window:
         file = b_filename_and_file[len(buffer)-1:]
         return filename, file
 
-    def prepare_file(self, file_name, file_bytes):
+    def encrypt_ecies(self, user, file_name, file_bytes):
         to_encrypt = bytearray(cryptography.string_to_bytes(file_name + "\n"))
         to_encrypt += file_bytes
+        # ECIES
+        # Get random r
+        r = cryptography.get_random_bytes(cryptography.key_length)
+        # R = r * G
+        R = cryptography.multiply_generator(r)
+        # Load Qa
+        Qa = cryptography.bytes_from_hex_string(user.pk)
+        # S = r * Qa
+        S = cryptography.multiply_point(r, Qa)
+        encryption_key = cryptography.get_key_from_coordinates(S)
+        cipher_text, nonce, mac = cryptography.encrypt_AES_GCM(encryption_key, to_encrypt)
+        return nonce, mac, cipher_text, R
 
-        ################################################ Encrypt file TO DO
-
-        nonce, mac = b"ABCD", b"CDEF"
-        cipher_text = to_encrypt
-        return nonce, mac, cipher_text
-
+    def decrypt_ecies(self, R, nonce, mac, cipher_text):
+        # ECIES
+        # Load da (sk)
+        da = self.database["password_hash"]
+        # S = da * R
+        S = cryptography.multiply_point(da, R)
+        decryption_key = cryptography.get_key_from_coordinates(S)
+        plain_text = cryptography.decrypt_AES_GCM(decryption_key, nonce, mac, cipher_text)
+        if not plain_text:
+            self.logger.log_error("ECIES Error while decrypting.")
+            return None
+        return plain_text
 
     def update_chosen_user(self):
         chosen_user_pick = self.builder.get_object("chosen_user")
@@ -457,8 +523,24 @@ class Main_window:
     def send_hello(self, ip, port):
         o_ip, o_port = self.get_ip_and_port(self.owner.ip)
         s_string = json.dumps({"username": self.owner.username, "action": Actions.HELLO.value, "ip": o_ip, "port": o_port})
-        print(s_string)
         self.logger.log_info(f"Sending HELLO to: {ip}:{port}")
+        try:
+            self.client.send_string(ip, port, s_string)
+            return True
+        except ConnectionRefusedError:
+            self.logger.log_error(f"Connection refused for {ip}:{port}")
+            return False
+
+    def send_hello_full(self, ip, port):
+        o_ip, o_port = self.get_ip_and_port(self.owner.ip)
+        s_string = json.dumps({"username": self.owner.username,
+                               "action": Actions.HELLO_EXTEND.value,
+                               "ip": o_ip,
+                               "port": o_port,
+                               "name": self.owner.name,
+                               "surname": self.owner.surname,
+                               "pk": self.owner.pk})
+        self.logger.log_info(f"Sending HELLO_EXTEND to: {ip}:{port}")
         try:
             self.client.send_string(ip, port, s_string)
             return True
@@ -480,8 +562,8 @@ class Main_window:
             self.handler_ecdh_start(j_obj)
         elif j_obj["action"] == Actions.ECDH_COMPLETE.value:
             self.handler_ecdh_complete(j_obj)
-        elif j_obj["action"] == Actions.TEST.value:
-            self.handler_test(j_obj)
+        elif j_obj["action"] == Actions.HELLO_EXTEND.value:
+            self.handler_hello_extend(j_obj)
 
     # Response Handlers
     def handler_hello(self, data):
@@ -490,6 +572,7 @@ class Main_window:
         if not user:
             self.logger.log_error(f"Username: {data['username']} not in contacts.")
             return
+        if user.username == self.owner.username: return
         user.ip = data["ip"] + ":" + str(data["port"])
     def handler_send_data(self, data):
         self.logger.log_info(f"DATA message received from: {data['username']}")
@@ -500,8 +583,26 @@ class Main_window:
     def handler_ecdh_complete(self, data):
         self.logger.log_info(f"ECDH_COMPLETE message received from: {data['username']}")
         self.ecdh_response(data)
-    def handler_test(self, data):
-        self.logger.log_info(f"TEST message received from: {data['username']}")
+    def handler_hello_extend(self, data):
+        self.logger.log_info(f"HELLO_EXTEND message received from: {data['username']}")
+        user = self.find_user(data['username'])
+        if not user:
+            if ADD_HELLO:
+                new_user = User(data["username"],
+                                data["name"],
+                                data["surname"],
+                                data["ip"] + ":" + str(data["port"]),
+                                data["pk"], "")
+                self.user_database.append(new_user)
+                self.logger.log_info(f"Creating new user: {new_user.username}")
+            else:
+                self.logger.log_error(f"Username: {data['username']} not in contacts.")
+                return
+        if user.username == self.owner.username: return
+        user.ip = data["ip"] + ":" + str(data["port"])
+        if TRUST_PK:
+            user.pk = data["pk"]
+            self.logger.log_info(f"Accepting new pk for user: {user.username}")
 
 
 class Actions(Enum):
@@ -509,17 +610,16 @@ class Actions(Enum):
     DATA = 1
     ECDH_START = 2
     ECDH_COMPLETE = 3
-    TEST = 4
+    HELLO_EXTEND = 4
 
 
 class User:
-    def __init__(self, username, name, surname, ip, pk, sk, note):
+    def __init__(self, username, name, surname, ip, pk, note):
         self.username = username
         self.name = name
         self.surname = surname
         self.ip = ip
         self.pk = pk
-        self.sk = sk
         self.note = note
 
     def to_dict(self):
@@ -529,7 +629,6 @@ class User:
             "surname": self.surname,
             "ip": self.ip,
             "pk": self.pk,
-            "sk": self.sk,
             "note": self.note
         }
         return user_dict
@@ -553,7 +652,6 @@ class Edit_window:
         self.e_surname = self.builder.get_object("e_surname")
         self.e_ip_and_port = self.builder.get_object("e_ip_and_port")
         self.e_pk = self.builder.get_object("e_pk")
-        self.e_sk = self.builder.get_object("e_sk")
         self.e_note = self.builder.get_object("e_note")
         self.user_id = self.find_user_index(self.find_user(username))
         if self.user_id == None:
@@ -566,7 +664,6 @@ class Edit_window:
         self.e_surname.insert(0, self.user.surname)
         self.e_ip_and_port.insert(0, self.user.ip)
         self.e_pk.insert(0, self.user.pk)
-        self.e_sk.insert(0, self.user.sk)
         self.e_note.insert(1.0, self.user.note)
 
     def run(self):
@@ -583,7 +680,6 @@ class Edit_window:
         self.user_database[self.user_id].surname = self.e_surname.get()
         self.user_database[self.user_id].ip = self.e_ip_and_port.get()
         self.user_database[self.user_id].pk = self.e_pk.get()
-        self.user_database[self.user_id].sk = self.e_sk.get()
         self.user_database[self.user_id].note = self.e_note.get(1.0, "end")
         self.logger.log_info(f"Saving edited user: {self.e_username.get()}")
 
@@ -593,7 +689,6 @@ class Edit_window:
                         self.e_surname.get(),
                         self.e_ip_and_port.get(),
                         self.e_pk.get(),
-                        self.e_sk.get(),
                         self.e_note.get(1.0, "end"))
         if new_user.username == "":
             self.logger.log_error(f"You cannot create user without username")
@@ -726,13 +821,16 @@ class Log_window:
 
 
 class Login_window:
-    def __init__(self, master=None):
+    def __init__(self, master):
 
         self.builder = builder = pygubu.Builder()
         builder.add_resource_path(PROJECT_PATH)
         builder.add_from_file(PROJECT_UI)
-        self.mainwindow = builder.get_object('login_window', master)
+        self.root = master
+        self.mainwindow = builder.get_object('login_window', self.root)
         builder.connect_callbacks(self)
+        self.account_root = None
+        self.account_window = None
 
         self.file_name = ""
         self.password = ""
@@ -800,23 +898,94 @@ class Login_window:
         self.mainwindow.quit()
 
     def load_hex(self, hex_string):
-        if hex_string.startswith("0x"):
-            return hex_string[2:]
-        else:
+        try:
+            if hex_string.startswith("0x"):
+                return hex_string[2:]
+            else:
+                return hex_string
+        except AttributeError:
             return hex_string
 
     def load_database(self, database_path):
         try:
             with open(database_path, "r") as f:
                 self.encrypted_database = json.load(f)
-        except json.decoder.JSONDecodeError:
+        except (json.decoder.JSONDecodeError, PermissionError):
             return False
         return True
+
+    def is_account_open(self):
+        try:
+            self.account_root.state()
+            return True
+        except (_tkinter.TclError, AttributeError):
+            self.account_root, self.account_window = None, None
+            return False
+
+    def on_closing(self):
+        if self.is_account_open():
+            self.account_root.destroy()
+            self.account_root, self.account_window = None, None
+            return
+        self.mainwindow.quit()
+
+    def b_create_account(self):
+        if self.is_account_open():
+            self.account_root.destroy()
+            self.account_root, self.account_window = None, None
+            return
+        self.account_root = tk.Tk()
+        self.account_window = Account_window(self.account_root)
+        self.account_window.run()
+
+
+class Account_window:
+    def __init__(self, master=None):
+        self.builder = builder = pygubu.Builder()
+        builder.add_resource_path(PROJECT_PATH)
+        builder.add_from_file(PROJECT_UI)
+        self.root = master
+        self.mainwindow = builder.get_object('account_frame', self.root)
+        builder.connect_callbacks(self)
+
+    def run(self):
+        self.mainwindow.mainloop()
+
+    def b_create(self):
+        e_username = self.builder.get_object("e_ac_username").get()
+        e_password = self.builder.get_object("e_ac_password").get()
+        e_ip_and_port = self.builder.get_object("e_ac_ip_and_port").get()
+        if not e_username or not e_password or not e_ip_and_port:
+            messagebox.showerror('Create account', 'You have to fill every field.')
+            return
+        file_name = e_username + ".dat"
+        if os.path.exists(file_name):
+            messagebox.showerror('Create account', f'Account {e_username} already exists.')
+            return
+
+        sk = cryptography.get_hash_from_string(e_password)
+        pk = cryptography.multiply_generator(sk)
+        user_database = [User(e_username, "", "", e_ip_and_port, cryptography.bytes_to_hex_string(pk), "")]
+
+        database = {}
+        database["pk"] = cryptography.bytes_to_hex_string(pk)
+        user_database_dict = {}
+        for index, user in enumerate(user_database):
+            user_database_dict[index] = user.to_dict()
+        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(sk, json.dumps(user_database_dict))
+        database["nonce"] = nonce.hex()
+        database["mac"] = mac.hex()
+        database["database"] = ciphertext.hex()
+        with open(file_name, "w") as f:
+            json.dump(database, f, indent=3)
+        messagebox.showinfo('Create account', f'Account {e_username} created.')
+        self.root.destroy()
 
 
 def main():
     root = tk.Tk()
     login_window = Login_window(root)
+    root.protocol("WM_DELETE_WINDOW", login_window.on_closing)
     login_window.run()
     root.destroy()
 
