@@ -4,6 +4,8 @@ import socketserver
 
 
 class RequestHandler(socketserver.BaseRequestHandler):
+    """Class for multi threaded message handling. It buffers received data. When everything is sent than it calls
+    server.callback with received data."""
     def handle(self):
         to_return = bytearray()
         data = self.request.recv(1024)
@@ -17,6 +19,7 @@ class RequestHandler(socketserver.BaseRequestHandler):
 
 
 class Server:
+    """Class for creating server. It will listen for user connections."""
     def __init__(self, ip=None, port=None, callback_mtd=None, receive_string=True):
         self.ip = ip
         self.port = port
@@ -70,6 +73,7 @@ class Server:
 
 
 class Client:
+    """Class for sending messages by TCP."""
     @staticmethod
     def send(ip, port, bytes_data):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

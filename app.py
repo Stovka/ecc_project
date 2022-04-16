@@ -127,11 +127,7 @@ class Main_window:
             return
         target_user = self.find_user(chosen_user)
         target_ip, target_port = self.get_ip_and_port(target_user.ip)
-        if EXTENDED_HELLO:
-            hello_mtd = self.send_hello_full
-        else:
-            hello_mtd = self.send_hello
-        if not hello_mtd(target_ip, target_port):
+        if not self.send_hello(target_ip, target_port):
             messagebox.showerror('Network error', f"User: {chosen_user} on address {target_ip}:{target_port} is offline.")
             return
         if not self.file_name_path and not self.signature_file_name_path:
@@ -140,8 +136,13 @@ class Main_window:
             return
 
         if not target_user.pk:
+            if TRUST_PK:
+                self.logger.log_info("Target user does not have public key. Requesting HELLO_EXTEND.")
+                self.send_hello_request(target_ip, target_port)
+                messagebox.showwarning('ECIES', f"Trying to request missing public key from: {chosen_user}")
+                return
             self.logger.log_error("Target user does not have public key")
-            messagebox.showerror('ECIES', f"Target user does not have public key")
+            messagebox.showerror('ECIES', f"Target user does not have public key.")
             return
 
         b_file = None
@@ -214,16 +215,12 @@ class Main_window:
             self.logger.log_error("Cannot communicate while offline")
         # Contact Bob if alive
         ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip)
-        if EXTENDED_HELLO:
-            hello_mtd = self.send_hello_full
-        else:
-            hello_mtd = self.send_hello
-        if not hello_mtd(ip, port):
+        if not self.send_hello(ip, port):
             messagebox.showerror('Network error', f"User: {chosen_user} on address {ip}:{port} seams offline.")
             return
         # Starting ECDH process
         # Generate da
-        random_bytes = cryptography.random_bytes(cryptography.key_length)
+        random_bytes = cryptography.random_bytes(cryptography.KEY_LENGTH)
         # Calculate Qa = da * G
         point_bytes = cryptography.multiply_generator(random_bytes)
         # Save da
@@ -242,7 +239,7 @@ class Main_window:
         if data["action"] == Actions.ECDH_START.value:
             # Bob received Qa
             # Generate db
-            random_bytes = cryptography.random_bytes(cryptography.key_length)
+            random_bytes = cryptography.random_bytes(cryptography.KEY_LENGTH)
             # Calculate Qb = db * G
             point_bytes = cryptography.multiply_generator(random_bytes)
             # Calculate shared secret as K = db * Qa
@@ -327,7 +324,7 @@ class Main_window:
             user_database_dict[index] = user.to_dict()
 
         encryption_key = self.database["password_hash"]
-        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(encryption_key, json.dumps(user_database_dict))
+        ciphertext, nonce, mac = cryptography.encrypt_aes_gcm(encryption_key, json.dumps(user_database_dict))
         self.database["database"] = ciphertext.hex()
         self.database["nonce"] = nonce.hex()
         self.database["mac"] = mac.hex()
@@ -386,7 +383,7 @@ class Main_window:
         to_encrypt += file_bytes
         # ECIES
         # Get random r
-        r = cryptography.get_random_bytes(cryptography.key_length)
+        r = cryptography.get_random_bytes(cryptography.KEY_LENGTH)
         # R = r * G
         R = cryptography.multiply_generator(r)
         # Load Qa
@@ -394,7 +391,7 @@ class Main_window:
         # S = r * Qa
         S = cryptography.multiply_point(r, Qa)
         encryption_key = cryptography.get_key_from_coordinates(S)
-        cipher_text, nonce, mac = cryptography.encrypt_AES_GCM(encryption_key, to_encrypt)
+        cipher_text, nonce, mac = cryptography.encrypt_aes_gcm(encryption_key, to_encrypt)
         return nonce, mac, cipher_text, R
 
     def decrypt_ecies(self, R, nonce, mac, cipher_text):
@@ -404,7 +401,7 @@ class Main_window:
         # S = da * R
         S = cryptography.multiply_point(da, R)
         decryption_key = cryptography.get_key_from_coordinates(S)
-        plain_text = cryptography.decrypt_AES_GCM(decryption_key, nonce, mac, cipher_text)
+        plain_text = cryptography.decrypt_aes_gcm(decryption_key, nonce, mac, cipher_text)
         if not plain_text:
             self.logger.log_error("ECIES Error while decrypting.")
             return None
@@ -521,8 +518,12 @@ class Main_window:
             return False
 
     def send_hello(self, ip, port):
+        """Send information about username, ip and port."""
         o_ip, o_port = self.get_ip_and_port(self.owner.ip)
-        s_string = json.dumps({"username": self.owner.username, "action": Actions.HELLO.value, "ip": o_ip, "port": o_port})
+        s_string = json.dumps({"username": self.owner.username,
+                               "action": Actions.HELLO.value,
+                               "ip": o_ip,
+                               "port": o_port})
         self.logger.log_info(f"Sending HELLO to: {ip}:{port}")
         try:
             self.client.send_string(ip, port, s_string)
@@ -532,6 +533,7 @@ class Main_window:
             return False
 
     def send_hello_full(self, ip, port):
+        """Send more information including pk. It is sent only if EXTENDED_HELLO=True."""
         o_ip, o_port = self.get_ip_and_port(self.owner.ip)
         s_string = json.dumps({"username": self.owner.username,
                                "action": Actions.HELLO_EXTEND.value,
@@ -541,6 +543,22 @@ class Main_window:
                                "surname": self.owner.surname,
                                "pk": self.owner.pk})
         self.logger.log_info(f"Sending HELLO_EXTEND to: {ip}:{port}")
+        try:
+            self.client.send_string(ip, port, s_string)
+            return True
+        except ConnectionRefusedError:
+            self.logger.log_error(f"Connection refused for {ip}:{port}")
+            return False
+
+    def send_hello_request(self, ip, port):
+        """Request information from user. It will be sent only if TRUST_PK=True. Response containing public key
+         (HELLO_EXTEND) will arrive only if target user has EXTENDED_HELLO=True."""
+        o_ip, o_port = self.get_ip_and_port(self.owner.ip)
+        s_string = json.dumps({"username": self.owner.username,
+                               "action": Actions.REQUEST_HELLO.value,
+                               "ip": o_ip,
+                               "port": o_port})
+        self.logger.log_info(f"Sending REQUEST_HELLO to: {ip}:{port}")
         try:
             self.client.send_string(ip, port, s_string)
             return True
@@ -564,6 +582,10 @@ class Main_window:
             self.handler_ecdh_complete(j_obj)
         elif j_obj["action"] == Actions.HELLO_EXTEND.value:
             self.handler_hello_extend(j_obj)
+        elif j_obj["action"] == Actions.REQUEST_HELLO.value:
+            self.handler_hello_request(j_obj)
+        else:
+            self.logger.log_error(f"Unknown action in message: {j_obj}")
 
     # Response Handlers
     def handler_hello(self, data):
@@ -602,7 +624,23 @@ class Main_window:
         user.ip = data["ip"] + ":" + str(data["port"])
         if TRUST_PK:
             user.pk = data["pk"]
-            self.logger.log_info(f"Accepting new pk for user: {user.username}")
+            self.logger.log_info(f"Accepting new pk from user: {user.username}")
+    def handler_hello_request(self, data):
+        self.logger.log_info(f"REQUEST_HELLO message received from: {data['username']}")
+        user = self.find_user(data['username'])
+        if not user:
+            self.logger.log_error(f"Username: {data['username']} not in contacts.")
+            return
+        if EXTENDED_HELLO:
+            # User will receive PK
+            hello_mtd = self.send_hello_full
+        else:
+            # User will not receive PK
+            hello_mtd = self.send_hello
+        if not hello_mtd(data["ip"], data["port"]):
+            messagebox.showerror('Network error', f"User: {data['username']}"
+                                                  f" on address {data['ip']}:{data['port']} seams offline.")
+            return
 
 
 class Actions(Enum):
@@ -611,6 +649,7 @@ class Actions(Enum):
     ECDH_START = 2
     ECDH_COMPLETE = 3
     HELLO_EXTEND = 4
+    REQUEST_HELLO = 5
 
 
 class User:
@@ -884,7 +923,7 @@ class Login_window:
             return
 
         decryption_key = cryptography.get_hash_from_string(password)
-        decrypted_data = cryptography.decrypt_AES_GCM(decryption_key, nonce, mac, encrypted_data)
+        decrypted_data = cryptography.decrypt_aes_gcm(decryption_key, nonce, mac, encrypted_data)
         decrypted_data = cryptography.string_from_bytes(decrypted_data)
         if not decrypted_data:
             messagebox.showerror('login', 'Authentication field. MAC failed')
@@ -972,7 +1011,7 @@ class Account_window:
         user_database_dict = {}
         for index, user in enumerate(user_database):
             user_database_dict[index] = user.to_dict()
-        ciphertext, nonce, mac = cryptography.encrypt_AES_GCM(sk, json.dumps(user_database_dict))
+        ciphertext, nonce, mac = cryptography.encrypt_aes_gcm(sk, json.dumps(user_database_dict))
         database["nonce"] = nonce.hex()
         database["mac"] = mac.hex()
         database["database"] = ciphertext.hex()

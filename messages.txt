@@ -4,6 +4,7 @@ class Actions(Enum):
     ECDH_START = 2
     ECDH_COMPLETE = 3
     HELLO_EXTEND = 4
+    REQUEST_HELLO = 5
 
 HELLO:
 {"username": "alice", "action": 0, "ip": "127.0.0.1", "port": 9999}
@@ -22,3 +23,6 @@ ECDH_COMPLETE:
 
 HELLO_EXTEND:
 {"username": "alice", "action": 4, "name": "Alice", "surname": "Alicova", "ip": "127.0.0.1", "port": 9999, "pk": "a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e"}
+
+REQUEST_HELLO:
+{"username": "alice", "action": 5, "ip": "127.0.0.1", "port": 9999}
