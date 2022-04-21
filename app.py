@@ -1,26 +1,24 @@
-import asyncio
 import json
 import pathlib
 import time
+import _tkinter
 import tkinter as tk
-import tkinter.ttk as ttk
+from tkinter import messagebox
 from enum import Enum
 from tkinter import filedialog as fd
 import pygubu
-
 import os
-from tkinter import messagebox
-import _tkinter
 from datetime import datetime
+
 import cryptography
 import networking
 
 LOG_LEVEL = 3
-BYPASS_LOGIN = False
 PRINT_CONSOLE = True
 TRUST_PK = True  # Trust public keys sent by HELLO messages. Susceptible to MitM.
 ADD_HELLO = True  # Add user to contacts after receiving HELLO message.
 EXTENDED_HELLO = True  # Send more info to other users.
+BYPASS_LOGIN = False
 PROJECT_PATH = pathlib.Path(__file__).parent
 PROJECT_UI = PROJECT_PATH / "app.ui"
 DOWNLOADS_PATH = "Downloads/"
@@ -34,38 +32,34 @@ class Main_window:
         self.root = master
         self.edit_root = None
         self.edit_window = None
-        #self.root.resizable(False, False)
         self.main_window = builder.get_object('main_window', master)
         self.main_frame = builder.get_object('frame_main', master)
         self.frame_mailbox = builder.get_object('frame_mailbox', master)
-        #self.log_frame.pack(expand='true', fill='both', side='top')
-        self.frame_mailbox.pack_forget()
+        self.frame_mailbox.pack_forget()  # Hide mailbox
         self.mailbox_opened = False
         self.online = False
+        self.database = decrypted_database
+        self.database_path = database_path
         self.connections = {}
-
         builder.connect_callbacks(self)
-
-        self.logger = Logging(LOG_LEVEL, PRINT_CONSOLE)
+        self.logger = Logging(LOG_LEVEL, PRINT_CONSOLE)  # Setup logging
         self.file_name_path = ""
         self.signature_file_name_path = ""
         self.mailbox_text = ""
         self.log_ctr = 0
-        self.server = networking.Server()
+        self.server = networking.Server()  # Create TCP server object
         self.server.callback = self.receive_data
-        self.client = networking.Client()
-        self.database = decrypted_database
-        self.database_path = database_path
-        self.user_database = self.load_user_database(decrypted_database)
-        self.owner = self.user_database[0]
+        self.client = networking.Client()  # Create TCP client object
+        self.user_database = self.load_user_database(decrypted_database)  # Create User objects from json
+        self.owner = self.user_database[0]  # Set owner
         self.owner.pk = self.database["pk"]  # Overwrite potentially invalid pk
-        self.root.title(self.owner.username + " address: " + self.owner.ip + " offline")
-        self.builder.get_variable("l_owner").set(self.owner.username + " account")
-        self.downloads_path = self.create_downloads(os.path.normpath(DOWNLOADS_PATH))
+        self.root.title(self.owner.username + " address: " + self.owner.ip_and_port + " offline")  # Set initial state
+        self.builder.get_variable("l_owner").set(self.owner.username + " account")  # Set owner username to app window
+        self.downloads_path = self.create_downloads(os.path.normpath(DOWNLOADS_PATH))  # Create download folder
 
         self.logger.log_info(f"Logged in as: {self.owner.username}")
         self.logger.log_info(f"User database: {[user.username for user in self.user_database]}")
-        self.start_server()
+        self.start_server()  # Try to start server (socket must by empty)
 
     def run(self):
         self.logger.log_debug("Main window opened.")
@@ -75,70 +69,83 @@ class Main_window:
     def b_start_sign(self):
         """Method for signing files with ECDSA. It takes file (file.txt) and generates signature (file.txt.sig). It
         uses owners sk (which is password hash)."""
-        if not self.file_name_path:
+        if not self.file_name_path:  # Input file must by specified
             self.logger.log_error("No file to sign chosen")
             messagebox.showerror('Choose file', f"Choose file to sign first.")
 
         b_file = None
         with open(self.file_name_path, 'rb') as f:
-            b_file = f.read()
+            b_file = f.read()  # Load input file to memory
         # Password hash is owners sk
-        signature = cryptography.ecdsa_sign(self.database["password_hash"], b_file)
-        with open(self.file_name_path + ".sig", 'w') as f:
-            f.write(cryptography.bytes_to_hex_string(signature))
+        signature = cryptography.ecdsa_sign(self.database["password_hash"], b_file) # Sign
+        with open(self.file_name_path + ".sig", 'w') as f:  # Create signature file
+            f.write(cryptography.bytes_to_hex_string(signature))  # Save signature in hex
         self.logger.log_info(f"Signature created: {self.file_name_path + '.sig'}")
         messagebox.showinfo('Signature', f"Signature created: {self.file_name_path + '.sig'}")
 
     def b_start_verify(self):
         """Method for verifying signatures with ECDSA. It takes two files (file.txt, file.txt.sig) and computes
         verification of signature. It uses pk of user that is selected, owners of none."""
-        if not self.signature_file_name_path or not self.file_name_path:
+        if not self.signature_file_name_path or not self.file_name_path:  # Input and signature files must by specified
             self.logger.log_error("No file to verify chosen")
             messagebox.showerror('Choose file', f"Choose file to verify first.")
         chosen_user = self.builder.get_object("chosen_user").get()
         if not chosen_user:
-            chosen_user = self.owner.username
+            chosen_user = self.owner.username  # If no user in specified then choose owner
 
         b_file = None
         with open(self.file_name_path, 'rb') as f:
-            b_file = f.read()
+            b_file = f.read()  # Load input file
 
         signature = None
         with open(self.signature_file_name_path, 'r') as f:
-            signature = cryptography.bytes_from_hex_string(f.read())
+            signature = cryptography.bytes_from_hex_string(f.read())  # Load signature file
 
-        pk = self.find_user(chosen_user).pk
+        pk = self.find_user(chosen_user).pk  # Find user in database and load public key
         if not pk:
+            # Public key does not exist. Verification is not possible.
+            if TRUST_PK and self.online:
+                # Try to request public key if TRUEST_PK is True. EXTENDED_HELLO with pk will arrive only if other user
+                # has EXTENDED_HELLO set to true.
+                self.logger.log_info(f"User {chosen_user} does not have public key. Requesting HELLO_EXTEND.")
+                ip, port = self.get_ip_and_port(self.find_user(chosen_user))
+                self.send_hello_request(ip, port)
+                messagebox.showwarning('ECDSA', f"Trying to request missing public key from: {chosen_user}")
+                return
             self.logger.log_error(f"cannot verify signature for username: {chosen_user} missing public key")
             messagebox.showerror('Verify', f"Username: {chosen_user} missing public key.")
+            return
+        # Verify signature
         if cryptography.ecdsa_verify(cryptography.bytes_from_hex_string(pk), signature, b_file):
             messagebox.showinfo('Verify', f"Signature is ok.")
         else:
             messagebox.showerror('Verify', f"Signature is wrong.")
 
     def b_start_send(self):
+        """Send file/files encrypted with ECIES encryption scheme."""
         chosen_user = self.builder.get_object("chosen_user").get()
-        if not chosen_user:
+        if not chosen_user:  # User must by specified
             self.logger.log_error("No User chosen")
             messagebox.showerror('Choose user', f"Choose user first.")
             return
-        if not self.online:
+        if not self.online:  # Server must be running
             self.logger.log_error("Cannot communicate while offline")
             return
-        target_user = self.find_user(chosen_user)
-        target_ip, target_port = self.get_ip_and_port(target_user.ip)
-        if not self.send_hello(target_ip, target_port):
+        target_user = self.find_user(chosen_user)  # Find user in database
+        target_ip, target_port = self.get_ip_and_port(target_user.ip_and_port)  # Get IP and port
+        if not self.send_hello(target_ip, target_port):  # Test connection / synchronize ports
             messagebox.showerror('Network error', f"User: {chosen_user} on address {target_ip}:{target_port} is offline.")
             return
-        if not self.file_name_path and not self.signature_file_name_path:
+        if not self.file_name_path and not self.signature_file_name_path:  # At least something to send
             self.logger.log_error("No file chosen")
             messagebox.showerror('Choose file', f"Choose file first.")
             return
 
         if not target_user.pk:
+            # Public key is missing. Sending anything is not possible.
             if TRUST_PK:
                 self.logger.log_info("Target user does not have public key. Requesting HELLO_EXTEND.")
-                self.send_hello_request(target_ip, target_port)
+                self.send_hello_request(target_ip, target_port)  # Request public key
                 messagebox.showwarning('ECIES', f"Trying to request missing public key from: {chosen_user}")
                 return
             self.logger.log_error("Target user does not have public key")
@@ -146,29 +153,27 @@ class Main_window:
             return
 
         b_file = None
-        if self.file_name_path:
+        if self.file_name_path:  # Process input file
             self.logger.log_info(f"Sending file: {os.path.basename(self.file_name_path)} to: {chosen_user}")
-            # Send file
-            file_name = os.path.basename(self.file_name_path)
+            file_name = os.path.basename(self.file_name_path)  # Get filename
             with open(self.file_name_path, 'rb') as f:
-                b_file = f.read()
-            # ECIES encryption here
-            nonce, mac, cipher_text, R = self.encrypt_ecies(target_user, file_name, b_file)
+                b_file = f.read()  # Load file to memory
+            nonce, mac, cipher_text, R = self.encrypt_ecies(target_user, file_name, b_file)  # ECIES encryption
+            # Construct message
             to_send = {'username': self.owner.username,
                        'action': Actions.DATA.value,
                        'nonce': cryptography.bytes_to_hex_string(nonce),
                        'mac': cryptography.bytes_to_hex_string(mac),
                        'R': cryptography.bytes_to_hex_string(R),
                        'data': cryptography.bytes_to_hex_string(cipher_text)}
-            self.send_dict(target_ip, target_port, to_send)
-            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
-        if self.signature_file_name_path:
+            self.send_dict(target_ip, target_port, to_send)  # Send message
+            self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")  # Update mailbox
+
+        if self.signature_file_name_path:  # Process signature file
             self.logger.log_info(f"Sending file: {os.path.basename(self.signature_file_name_path)} to: {chosen_user}")
-            # Send signature
             file_name = os.path.basename(self.signature_file_name_path)
             with open(self.signature_file_name_path, 'rb') as f:
                 b_file = f.read()
-            # ECIES encryption here
             nonce, mac, cipher_text, R = self.encrypt_ecies(target_user, file_name, b_file)
             to_send = {'username': self.owner.username,
                        'action': Actions.DATA.value,
@@ -180,21 +185,22 @@ class Main_window:
             self.update_mailbox(f"Sent file: {file_name} to {chosen_user}")
 
     def received_file(self, data):
-        user = self.find_user(data["username"])
+        """This method is called when message DATA is received."""
+        user = self.find_user(data["username"])  # Load user
         if not user:
             self.logger.log_error(f"Username: {data['username']} not in contacts. Cannot decrypt file")
             messagebox.showerror('File received', f"Username: {data['username']} not in contacts. Cannot decrypt file")
+        # Parse message
         to_decrypt = cryptography.bytes_from_hex_string(data["data"])
         R = cryptography.bytes_from_hex_string(data["R"])
         nonce = cryptography.bytes_from_hex_string(data["nonce"])
         mac = cryptography.bytes_from_hex_string(data["mac"])
-        # ECIES decryption here
-        decrypted = self.decrypt_ecies(R, nonce, mac, to_decrypt)
+        decrypted = self.decrypt_ecies(R, nonce, mac, to_decrypt)  # ECIES decryption
         if not decrypted:
             self.logger.log_error("Decryption Failed.")
             return
 
-        filename, file = self.get_file_name(decrypted)
+        filename, file = self.get_file_name(decrypted)  # Decode filename and file
         if not filename or not file:
             self.logger.log_error("Decoding decrypted message.")
             return
@@ -207,15 +213,15 @@ class Main_window:
         """This method starts ECDH process. It computes da, Qa and sends Qa to Bob. Message is received and processed
          by ecdh_response method."""
         chosen_user = self.builder.get_object("chosen_user").get()
-        if not chosen_user:
+        if not chosen_user:  # User must by specified
             self.logger.log_error("No User chosen")
             messagebox.showerror('Choose user', f"Choose user first.")
             return
-        if not self.online:
+        if not self.online:  # Server must be running
             self.logger.log_error("Cannot communicate while offline")
         # Contact Bob if alive
-        ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip)
-        if not self.send_hello(ip, port):
+        ip, port = self.get_ip_and_port(self.find_user(chosen_user).ip_and_port)
+        if not self.send_hello(ip, port):  # Test connection / synchronize ports
             messagebox.showerror('Network error', f"User: {chosen_user} on address {ip}:{port} seams offline.")
             return
         # Starting ECDH process
@@ -254,7 +260,7 @@ class Main_window:
                     'username': self.owner.username,
                     'action': Actions.ECDH_COMPLETE.value,
                     'point': cryptography.bytes_to_hex_string(point_bytes)}
-                ip, port = self.get_ip_and_port(self.find_user(data["username"]).ip)
+                ip, port = self.get_ip_and_port(self.find_user(data["username"]).ip_and_port)
                 self.send_dict(ip, port, to_send)
             except AttributeError:
                 self.logger.log_error(f"User {data['username']} not it contacts. Cannot send ECDH reply.")
@@ -319,27 +325,29 @@ class Main_window:
 
     # # # # # # # # # # # # # # # # # # # # #  Helper methods # # # # # # # # # # # # # # # # # # # # #
     def save_database(self):
+        """This method is called when closing application. It converts database to json, encrypt it, save it."""
         user_database_dict = {}
         for index, user in enumerate(self.user_database):
-            user_database_dict[index] = user.to_dict()
+            user_database_dict[index] = user.to_dict()  # User object to dictionary
 
+        # Encrypt database
         encryption_key = self.database["password_hash"]
         ciphertext, nonce, mac = cryptography.encrypt_aes_gcm(encryption_key, json.dumps(user_database_dict))
         self.database["database"] = ciphertext.hex()
         self.database["nonce"] = nonce.hex()
         self.database["mac"] = mac.hex()
-        del self.database["password_hash"]
+        del self.database["password_hash"]  # Remove password hash from database
         with open(self.database_path, "w") as f:
-            json.dump(self.database, f, indent=3)
+            json.dump(self.database, f, indent=3)  # Save to file
 
     def on_closing(self):
         if self.logger.is_open():
-            self.logger.close_console()
+            self.logger.close_console()  # Close logging window
         if self.is_edit_open():
-            self.b_edit_user()
-        self.server.stop_server()
+            self.b_edit_user()  # Close edit window
+        self.server.stop_server()  # Stop server
         self.logger.log_debug("Main window closing. Saving data")
-        self.save_database()
+        self.save_database()  # Encrypt / save database
         self.root.destroy()
 
     def is_edit_open(self):
@@ -351,8 +359,8 @@ class Main_window:
             return False
 
     def load_user_database(self, database):
+        """Convert dict users to User objects."""
         user_database = []
-        # Index 0 = owner
         try:
             for user in database["database"]:
                 user_database.append(User(
@@ -367,8 +375,9 @@ class Main_window:
             exit()
         return user_database
 
+
     def get_file_name(self, b_filename_and_file):
-        # bytearray(filename.txt\nfile)
+        """Separate file name and file bytes. Input is in format bytearray(filename.txt\nfile_bytes)"""
         buffer = ""
         for b in b_filename_and_file:
             buffer += '{!r}'.format(bytes([b]))[2:-1]
@@ -379,8 +388,9 @@ class Main_window:
         return filename, file
 
     def encrypt_ecies(self, user, file_name, file_bytes):
+        """ECIES encryption scheme."""
         to_encrypt = bytearray(cryptography.string_to_bytes(file_name + "\n"))
-        to_encrypt += file_bytes
+        to_encrypt += file_bytes  # to_encrypt = bytearray(filename.txt\nfile_bytes)
         # ECIES
         # Get random r
         r = cryptography.get_random_bytes(cryptography.KEY_LENGTH)
@@ -395,7 +405,7 @@ class Main_window:
         return nonce, mac, cipher_text, R
 
     def decrypt_ecies(self, R, nonce, mac, cipher_text):
-        # ECIES
+        """ECIES decryption scheme."""
         # Load da (sk)
         da = self.database["password_hash"]
         # S = da * R
@@ -454,8 +464,9 @@ class Main_window:
         self.start_server()
 
     def start_server(self):
+        """Method for starting / restarting TCP server."""
         self.online = False
-        self.root.title(self.owner.username + " address: " + self.owner.ip + " offline")
+        self.root.title(self.owner.username + " address: " + self.owner.ip_and_port + " offline")
         try:
             if self.server.is_running:
                 self.logger.log_info("Stopping server")
@@ -463,7 +474,7 @@ class Main_window:
         except AttributeError:
             pass
 
-        ip, port = self.get_ip_and_port(self.owner.ip)
+        ip, port = self.get_ip_and_port(self.owner.ip_and_port)
         if not ip:
             self.server = None
             self.logger.log_error(f"Could not start listening on ip: {ip} port: {port}")
@@ -475,14 +486,16 @@ class Main_window:
         self.server.start_server()
         time.sleep(0.5)  # Time to die
         if not self.server.is_running:
+            self.server = None
             self.logger.log_error("Creating socket failed")
             messagebox.showerror('Network error', f"Could not start listening on ip: {ip} port: {port}")
-            self.server = None
+            return
         self.logger.log_info(f"Listening on {ip}:{port}")
-        self.root.title(self.owner.username + " address: " + self.owner.ip + " online")
+        self.root.title(self.owner.username + " address: " + self.owner.ip_and_port + " online")
         self.online = True
 
     def get_ip_and_port(self, ip_and_port):
+        """Convert string 127.0.0.1:9999 to a string 127.0.0.1 and a int 9999."""
         try:
             ip_and_port = ip_and_port.split(":")
             ip = ip_and_port[0]
@@ -492,12 +505,6 @@ class Main_window:
             self.logger.log_error(f"Invalid IP and port: {ip_and_port}")
             messagebox.showerror('Network error', f"Invalid IP and port: {ip_and_port}")
             return None, None
-
-    def test_connection(self):
-        ip_and_port = self.owner.ip.split(":")
-        ip = ip_and_port[0]
-        port = int(ip_and_port[1])
-        self.client.send_string(ip, port, json.dumps({'action': Actions.TEST, 'data': 'test'}))
 
     def send_dict(self, ip, port, dict_data):
         self.logger.log_info(f"Sending: {Actions(dict_data['action']).name} message to: {ip}:{port}")
@@ -519,7 +526,7 @@ class Main_window:
 
     def send_hello(self, ip, port):
         """Send information about username, ip and port."""
-        o_ip, o_port = self.get_ip_and_port(self.owner.ip)
+        o_ip, o_port = self.get_ip_and_port(self.owner.ip_and_port)
         s_string = json.dumps({"username": self.owner.username,
                                "action": Actions.HELLO.value,
                                "ip": o_ip,
@@ -534,7 +541,7 @@ class Main_window:
 
     def send_hello_full(self, ip, port):
         """Send more information including pk. It is sent only if EXTENDED_HELLO=True."""
-        o_ip, o_port = self.get_ip_and_port(self.owner.ip)
+        o_ip, o_port = self.get_ip_and_port(self.owner.ip_and_port)
         s_string = json.dumps({"username": self.owner.username,
                                "action": Actions.HELLO_EXTEND.value,
                                "ip": o_ip,
@@ -553,7 +560,7 @@ class Main_window:
     def send_hello_request(self, ip, port):
         """Request information from user. It will be sent only if TRUST_PK=True. Response containing public key
          (HELLO_EXTEND) will arrive only if target user has EXTENDED_HELLO=True."""
-        o_ip, o_port = self.get_ip_and_port(self.owner.ip)
+        o_ip, o_port = self.get_ip_and_port(self.owner.ip_and_port)
         s_string = json.dumps({"username": self.owner.username,
                                "action": Actions.REQUEST_HELLO.value,
                                "ip": o_ip,
@@ -567,6 +574,8 @@ class Main_window:
             return False
 
     def receive_data(self, data):
+        """Server callback method. This method receives all messages from TCP server. It calls individual response
+        handlers according to the action that is in the message."""
         try:
             j_obj = json.loads(data)
         except json.decoder.JSONDecodeError:
@@ -595,7 +604,7 @@ class Main_window:
             self.logger.log_error(f"Username: {data['username']} not in contacts.")
             return
         if user.username == self.owner.username: return
-        user.ip = data["ip"] + ":" + str(data["port"])
+        user.ip_and_port = data["ip"] + ":" + str(data["port"])
     def handler_send_data(self, data):
         self.logger.log_info(f"DATA message received from: {data['username']}")
         self.received_file(data)
@@ -610,6 +619,7 @@ class Main_window:
         user = self.find_user(data['username'])
         if not user:
             if ADD_HELLO:
+                # ADD_HELLO = True -> Add new user to database
                 new_user = User(data["username"],
                                 data["name"],
                                 data["surname"],
@@ -621,8 +631,9 @@ class Main_window:
                 self.logger.log_error(f"Username: {data['username']} not in contacts.")
                 return
         if user.username == self.owner.username: return
-        user.ip = data["ip"] + ":" + str(data["port"])
+        user.ip_and_port = data["ip"] + ":" + str(data["port"])
         if TRUST_PK:
+            # TRUST_PK = True -> Accepting PK from HELLO message
             user.pk = data["pk"]
             self.logger.log_info(f"Accepting new pk from user: {user.username}")
     def handler_hello_request(self, data):
@@ -644,6 +655,7 @@ class Main_window:
 
 
 class Actions(Enum):
+    """Enum class representing all message types."""
     HELLO = 0
     DATA = 1
     ECDH_START = 2
@@ -653,11 +665,11 @@ class Actions(Enum):
 
 
 class User:
-    def __init__(self, username, name, surname, ip, pk, note):
+    def __init__(self, username, name, surname, ip_and_port, pk, note):
         self.username = username
         self.name = name
         self.surname = surname
-        self.ip = ip
+        self.ip_and_port = ip_and_port
         self.pk = pk
         self.note = note
 
@@ -666,7 +678,7 @@ class User:
             "username": self.username,
             "name": self.name,
             "surname": self.surname,
-            "ip": self.ip,
+            "ip": self.ip_and_port,
             "pk": self.pk,
             "note": self.note
         }
@@ -694,14 +706,14 @@ class Edit_window:
         self.e_note = self.builder.get_object("e_note")
         self.user_id = self.find_user_index(self.find_user(username))
         if self.user_id == None:
-            # Empty user
+            # Edit window opened without specifying user -> Empty user
             self.user = User("", "", "", "", "", "", "")
         else:
             self.user = self.find_user(username)
         self.e_username.insert(0, self.user.username)
         self.e_name.insert(0, self.user.name)
         self.e_surname.insert(0, self.user.surname)
-        self.e_ip_and_port.insert(0, self.user.ip)
+        self.e_ip_and_port.insert(0, self.user.ip_and_port)
         self.e_pk.insert(0, self.user.pk)
         self.e_note.insert(1.0, self.user.note)
 
@@ -717,7 +729,7 @@ class Edit_window:
         self.user_database[self.user_id].username = self.e_username.get()
         self.user_database[self.user_id].name = self.e_name.get()
         self.user_database[self.user_id].surname = self.e_surname.get()
-        self.user_database[self.user_id].ip = self.e_ip_and_port.get()
+        self.user_database[self.user_id].ip_and_port = self.e_ip_and_port.get()
         self.user_database[self.user_id].pk = self.e_pk.get()
         self.user_database[self.user_id].note = self.e_note.get(1.0, "end")
         self.logger.log_info(f"Saving edited user: {self.e_username.get()}")
@@ -861,7 +873,6 @@ class Log_window:
 
 class Login_window:
     def __init__(self, master):
-
         self.builder = builder = pygubu.Builder()
         builder.add_resource_path(PROJECT_PATH)
         builder.add_from_file(PROJECT_UI)
@@ -883,6 +894,7 @@ class Login_window:
         self.mainwindow.mainloop()
 
     def open(self):
+        """Open file button pressed."""
         file_name_field = self.builder.get_object("chosen_file")
         path = fd.askopenfilename()
         file_name_field.config(state="normal")
@@ -895,7 +907,8 @@ class Login_window:
             messagebox.showerror('login', 'Invalid database file.')
 
     def login(self, *args):
-        if BYPASS_LOGIN:
+        """Login button pressed."""
+        if BYPASS_LOGIN:  # This will skip password validation and database decryption
             self.unlock = True
             self.mainwindow.quit()
             return
@@ -918,10 +931,12 @@ class Login_window:
             messagebox.showerror('login', 'Invalid database file.')
             return
 
+        # Validate password
         if not cryptography.validate_password(password, PK):
             messagebox.showerror('login', 'Authentication field')
             return
 
+        # Decrypt database
         decryption_key = cryptography.get_hash_from_string(password)
         decrypted_data = cryptography.decrypt_aes_gcm(decryption_key, nonce, mac, encrypted_data)
         decrypted_data = cryptography.string_from_bytes(decrypted_data)
@@ -931,8 +946,8 @@ class Login_window:
 
         self.decrypted_database = self.encrypted_database
         self.decrypted_database["database"] = json.loads(decrypted_data)
-        self.decrypted_database["password_hash"] = decryption_key
-        del password
+        self.decrypted_database["password_hash"] = decryption_key  # Save password hash
+        del password  # Delete password
         self.unlock = True
         self.mainwindow.quit()
 
@@ -946,6 +961,7 @@ class Login_window:
             return hex_string
 
     def load_database(self, database_path):
+        """Method for loading database from file."""
         try:
             with open(database_path, "r") as f:
                 self.encrypted_database = json.load(f)
@@ -953,7 +969,7 @@ class Login_window:
             return False
         return True
 
-    def is_account_open(self):
+    def is_account_window_open(self):
         try:
             self.account_root.state()
             return True
@@ -962,14 +978,14 @@ class Login_window:
             return False
 
     def on_closing(self):
-        if self.is_account_open():
+        if self.is_account_window_open():
             self.account_root.destroy()
             self.account_root, self.account_window = None, None
             return
         self.mainwindow.quit()
 
     def b_create_account(self):
-        if self.is_account_open():
+        if self.is_account_window_open():
             self.account_root.destroy()
             self.account_root, self.account_window = None, None
             return
@@ -991,6 +1007,7 @@ class Account_window:
         self.mainwindow.mainloop()
 
     def b_create(self):
+        """Method for creating login files."""
         e_username = self.builder.get_object("e_ac_username").get()
         e_password = self.builder.get_object("e_ac_password").get()
         e_ip_and_port = self.builder.get_object("e_ac_ip_and_port").get()
@@ -998,45 +1015,51 @@ class Account_window:
             messagebox.showerror('Create account', 'You have to fill every field.')
             return
         file_name = e_username + ".dat"
-        if os.path.exists(file_name):
+        if os.path.exists(file_name):  # Check if account name is available.
             messagebox.showerror('Create account', f'Account {e_username} already exists.')
             return
 
-        sk = cryptography.get_hash_from_string(e_password)
-        pk = cryptography.multiply_generator(sk)
+        sk = cryptography.get_hash_from_string(e_password)  # sk is hash of password
+        pk = cryptography.multiply_generator(sk)  # PK is sk * G
+        # Create user database with one user (owner)
         user_database = [User(e_username, "", "", e_ip_and_port, cryptography.bytes_to_hex_string(pk), "")]
 
+        # Create database
         database = {}
         database["pk"] = cryptography.bytes_to_hex_string(pk)
+        # Convert User object to dictionary
         user_database_dict = {}
         for index, user in enumerate(user_database):
             user_database_dict[index] = user.to_dict()
+        # Encrypt user database dictionary
         ciphertext, nonce, mac = cryptography.encrypt_aes_gcm(sk, json.dumps(user_database_dict))
         database["nonce"] = nonce.hex()
         database["mac"] = mac.hex()
         database["database"] = ciphertext.hex()
         with open(file_name, "w") as f:
-            json.dump(database, f, indent=3)
+            json.dump(database, f, indent=3)  # Save database to file as json string
         messagebox.showinfo('Create account', f'Account {e_username} created.')
         self.root.destroy()
 
 
 def main():
+    # Create Login window
     root = tk.Tk()
     login_window = Login_window(root)
     root.protocol("WM_DELETE_WINDOW", login_window.on_closing)
     login_window.run()
     root.destroy()
 
+    # Check if database decryption was successful.
     if not login_window.unlock:
         exit()
 
+    # Create Main window
     root = tk.Tk()
     main_window = Main_window(root, login_window.decrypted_database, login_window.file_name)
     root.protocol("WM_DELETE_WINDOW", main_window.on_closing)
     main_window.run()
 
-    print("end")
 
 
 if __name__ == '__main__':

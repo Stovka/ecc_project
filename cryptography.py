@@ -1,24 +1,25 @@
 from Crypto.Cipher import AES
-from Crypto.Hash import keccak
 from Crypto.Random import get_random_bytes
 from Crypto.PublicKey import ECC
 from Crypto.PublicKey.ECC import EccPoint
 from Crypto.Signature import DSS
+from Crypto.Hash import keccak
 from Crypto.Hash import SHA256
 
 ECC_CURVE = "secp256r1"
-KEY_LENGTH = 32
+KEY_LENGTH = 32  # 32 * 8 = 256b
 
 
 def validate_password(password, public_point):
+    """Calculates P = Hash(password) * G and compares P with PK."""
     # public_point in bytes first x then y
     curve = ECC._curves[ECC_CURVE]
     # Generator G
-    point_G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
+    G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
     # Number d
     d = int_from_bytes(get_hash_from_string(password))
     # Point dG = user PK
-    dG = point_G * d
+    dG = G * d
     # Convert bytes to x,y int coordinates
     PKx, PKy = get_coordinates(public_point)
     if dG.x == PKx and dG.y == PKy:
@@ -27,22 +28,24 @@ def validate_password(password, public_point):
 
 
 def get_coordinates(bytes_cor):
-    PKx = bytearray()
-    PKy = bytearray()
-    # Convert coordinate bytes to x,y int coordinates
+    """Convert bytes to x, y integer coordinates."""
+    Px = bytearray()
+    Py = bytearray()
+    # Split in half
     for i, b in enumerate(bytes_cor):
         if i < len(bytes_cor) / 2:
-            PKx.append(b)
+            Px.append(b)
         else:
-            PKy.append(b)
-    PKx = int_from_bytes(PKx)
-    PKy = int_from_bytes(PKy)
-    return PKx, PKy
+            Py.append(b)
+    # Bytes to int
+    Px = int_from_bytes(Px)
+    Py = int_from_bytes(Py)
+    return Px, Py
 
 
 def get_key_from_coordinates(bytes_cor):
+    """Get key from bytes. Return bytes of KEY_LENGTH length."""
     key = bytearray()
-    # Convert coordinate bytes to x !BYTES! coordinate
     for i, b in enumerate(bytes_cor):
         if i < KEY_LENGTH:
             key.append(b)
@@ -60,7 +63,7 @@ def get_hash(bytes):
 
 
 def encrypt_aes_gcm(key, plaintext):
-    # key in bytes, plaintext in bytes/string, returns bytes
+    """Encrypt plaintext with AES GCM. Accepts bytes or string. Returns ciphertext, nonce, mac in bytes."""
     if isinstance(plaintext, str):
         plaintext = string_to_bytes(plaintext)
     aesCipher = AES.new(key, AES.MODE_GCM)
@@ -69,27 +72,29 @@ def encrypt_aes_gcm(key, plaintext):
 
 
 def decrypt_aes_gcm(key, nonce, mac, encrypted_data):
-    # Everything in bytes
+    """Decrypt ciphertext with AES GCM. Returns plaintext if success."""
     aesCipher = AES.new(key, AES.MODE_GCM, nonce)
     try:
         plaintext = aesCipher.decrypt_and_verify(encrypted_data, mac)
     except ValueError as err:
-        print(err)
+        #print(err)  # MAC error / other error
         return None
     return plaintext
 
 
 def multiply_generator(bytes):
+    """Multiply number in bytes with generator G. Returns point as bytes."""
     curve = ECC._curves[ECC_CURVE]
-    point_G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
+    G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
     d = int_from_bytes(bytes)
-    dG = point_G * d
+    dG = G * d
     dG_bytes = bytearray(dG.x.to_bytes())
     dG_bytes += dG.y.to_bytes()
     return dG_bytes
 
 
 def multiply_point(bytes, point_bytes):
+    """Multiply number with arbitrary point. Everything in bytes."""
     d = int_from_bytes(bytes)
     Px, Py = get_coordinates(point_bytes)
     P = EccPoint(Px, Py)
@@ -100,14 +105,15 @@ def multiply_point(bytes, point_bytes):
 
 
 def ecdsa_sign(sk, bytes_to_sign):
+    """Sign bytes with sk. Returns signature bytes."""
     # Construct ECC key from sk
     curve = ECC._curves[ECC_CURVE]
-    point_G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
+    G = EccPoint(curve.Gx, curve.Gy, ECC_CURVE)
     d = int_from_bytes(sk)
-    PK = point_G * d
+    PK = G * d
     key = ECC.construct(curve=ECC_CURVE, d=d, point_x=PK.x, point_y=PK.y)
 
-    # Hash input
+    # Hash input bytes
     hashed = SHA256.new(bytes_to_sign)
     signer = DSS.new(key, 'fips-186-3')
     signature = signer.sign(hashed)
@@ -115,10 +121,12 @@ def ecdsa_sign(sk, bytes_to_sign):
 
 
 def ecdsa_verify(pk, signature, bytes_to_verify):
+    """Verify signature with public key."""
     # Construct ECC key from pk
     PKx, PKy = get_coordinates(pk)
     key = ECC.construct(curve=ECC_CURVE, point_x=PKx, point_y=PKy)
 
+    # Hash bytes to verify
     hashed = SHA256.new(bytes_to_verify)
     verifier = DSS.new(key, 'fips-186-3')
     try:
