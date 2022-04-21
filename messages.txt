@@ -7,22 +7,61 @@ class Actions(Enum):
     REQUEST_HELLO = 5
 
 HELLO:
-{"username": "alice", "action": 0, "ip": "127.0.0.1", "port": 9999}
+{
+   "username":"alice",
+   "action":0,
+   "ip":"127.0.0.1",
+   "port":9999
+}
 
 DATA (encrypted):
-{"username": "alice", "action": 1, "nonce": "22a2b2cea06a22616ccfd8b19e3cc804", "mac": dfb5cd9cfe49d1d1dcc99679d8a737f0, "R": "a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e", "data": "dfb5cd9cfe49d1d1dcc99679d8a737f0..."}
+{
+   "username":"alice",
+   "action":1,
+   "nonce":"22a2b2cea06a22616ccfd8b19e3cc804",
+   "mac":"dfb5cd9cfe49d1d1dcc99679d8a737f0",
+   "R":"a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e",
+   "data":"dfb5cd9cfe49d1d1dcc99679d8a737f0..."
+}
 
 DATA (decrypted):
-{"username": "alice", "action": 1, "nonce": "22a2b2cea06a22616ccfd8b19e3cc804", "mac": dfb5cd9cfe49d1d1dcc99679d8a737f0, "R": "a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e", "data": "zprava.txt\ndfb5cd9(filebytes)dfb5cd9"}
-
+{
+   "username":"alice",
+   "action":1,
+   "nonce":"22a2b2cea06a22616ccfd8b19e3cc804",
+   "mac":"dfb5cd9cfe49d1d1dcc99679d8a737f0",
+   "R":"a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e",
+   "data":"zprava.txt\ndfb5cd9(filebytes)dfb5cd9..."
+}
 ECDH_START:
-{"username": "alice", "action": 2, "point": "d81f3e13b1e9a8116942da764526025231a4cfcf1d4f0d0f81af34455e98e508f44b1df2fd59f9d2e04b81d2b62233097280864880a7283e1cbded768f3f91b9"}
+{
+   "username":"alice",
+   "action":2,
+   "point":"d81f3e13b1e9a8116942da764526025231a4cfcf1d4f0d0f81af34455e98e508f44b1df2fd59f9d2e04b81d2b62233097280864880a7283e1cbded768f3f91b9"
+}
 
 ECDH_COMPLETE:
-{"username": "alice", "action": 3, "point": "668dddc4901d38e2d5f38b28a1928efeeee861088b87ec8c32812fa0853c7e9fc6aeb32fe856eb178c2c0a3b6b8df73980fc37698ce1706b81730d0d2dfa6b78"}
+{
+   "username":"alice",
+   "action":3,
+   "point":"668dddc4901d38e2d5f38b28a1928efeeee861088b87ec8c32812fa0853c7e9fc6aeb32fe856eb178c2c0a3b6b8df73980fc37698ce1706b81730d0d2dfa6b78"
+}
 
 HELLO_EXTEND:
-{"username": "alice", "action": 4, "name": "Alice", "surname": "Alicova", "ip": "127.0.0.1", "port": 9999, "pk": "a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e"}
+{
+   "username":"alice",
+   "action":4,
+   "name":"Alice",
+   "surname":"Alicova",
+   "ip":"127.0.0.1",
+   "port":9999,
+   "pk":"a10186c58211fc75d15e3dcb16de95f28b00f23dcec6bd9843bcb78d811964524f1e25e0cce4a57d6c567254026a47aa33ffb46d321af0cd23ef33056c52e51e"
+}
 
 REQUEST_HELLO:
-{"username": "alice", "action": 5, "ip": "127.0.0.1", "port": 9999}
+{
+   "username":"alice",
+   "action":5,
+   "ip":"127.0.0.1",
+   "port":9999
+}
