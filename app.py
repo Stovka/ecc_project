@@ -15,10 +15,9 @@ import networking
 
 LOG_LEVEL = 3
 PRINT_CONSOLE = True
-TRUST_PK = True  # Trust public keys sent by HELLO messages. Susceptible to MitM.
-ADD_HELLO = True  # Add user to contacts after receiving HELLO message.
+ACCEPT_PK = True  # Trust public keys sent by HELLO_EXTEND messages. Susceptible to MitM.
+ACCEPT_USER = True  # Add user to contacts after receiving HELLO message.
 EXTENDED_HELLO = True  # Send more info to other users.
-BYPASS_LOGIN = False
 PROJECT_PATH = pathlib.Path(__file__).parent
 PROJECT_UI = PROJECT_PATH / "app.ui"
 DOWNLOADS_PATH = "Downloads/"
@@ -104,7 +103,7 @@ class Main_window:
         pk = self.find_user(chosen_user).pk  # Find user in database and load public key
         if not pk:
             # Public key does not exist. Verification is not possible.
-            if TRUST_PK and self.online:
+            if ACCEPT_PK and self.online:
                 # Try to request public key if TRUEST_PK is True. EXTENDED_HELLO with pk will arrive only if other user
                 # has EXTENDED_HELLO set to true.
                 self.logger.log_info(f"User {chosen_user} does not have public key. Requesting HELLO_EXTEND.")
@@ -143,7 +142,7 @@ class Main_window:
 
         if not target_user.pk:
             # Public key is missing. Sending anything is not possible.
-            if TRUST_PK:
+            if ACCEPT_PK:
                 self.logger.log_info("Target user does not have public key. Requesting HELLO_EXTEND.")
                 self.send_hello_request(target_ip, target_port)  # Request public key
                 messagebox.showwarning('ECIES', f"Trying to request missing public key from: {chosen_user}")
@@ -618,7 +617,7 @@ class Main_window:
         self.logger.log_info(f"HELLO_EXTEND message received from: {data['username']}")
         user = self.find_user(data['username'])
         if not user:
-            if ADD_HELLO:
+            if ACCEPT_USER:
                 # ADD_HELLO = True -> Add new user to database
                 new_user = User(data["username"],
                                 data["name"],
@@ -632,7 +631,7 @@ class Main_window:
                 return
         if user.username == self.owner.username: return
         user.ip_and_port = data["ip"] + ":" + str(data["port"])
-        if TRUST_PK:
+        if ACCEPT_PK:
             # TRUST_PK = True -> Accepting PK from HELLO message
             user.pk = data["pk"]
             self.logger.log_info(f"Accepting new pk from user: {user.username}")
@@ -908,11 +907,6 @@ class Login_window:
 
     def login(self, *args):
         """Login button pressed."""
-        if BYPASS_LOGIN:  # This will skip password validation and database decryption
-            self.unlock = True
-            self.mainwindow.quit()
-            return
-
         password_field = self.builder.get_object("password")
         password = password_field.get()
 
